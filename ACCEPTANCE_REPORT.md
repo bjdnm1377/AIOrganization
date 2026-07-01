@@ -6,6 +6,11 @@ Stage: First runnable skeleton and minimal persistent workflow
 
 Status: IMPLEMENTATION COMPLETE / PARTIAL ENVIRONMENT VERIFICATION
 
+Superseded status note: the follow-up environment verification stage is recorded
+in `FINAL_VERIFICATION_REPORT.md`. That report currently blocks progression to
+the Codex Coding Worker isolation stage because Python 3.12 and Docker are not
+available in this environment.
+
 The implementation, unit tests, workflow tests, FastAPI tests, lint, type checks,
 secret scan, vulnerability scan, license report, and SBOM generation are complete
 on this host. Docker is not installed on this host, so the live PostgreSQL
@@ -338,7 +343,11 @@ Residual low risks:
 
 ## 16. Next Stage Recommendation
 
-Proceed to Codex Coding Worker isolation execution:
+Superseded by `FINAL_VERIFICATION_REPORT.md`: do not proceed to Codex Coding
+Worker isolation execution until Python 3.12 lock verification and live
+Docker/PostgreSQL integration complete in a suitable environment.
+
+Original next-stage plan after environment unblock:
 
 - Keep Codex behind the Worker port.
 - Use task-scoped Git worktrees.

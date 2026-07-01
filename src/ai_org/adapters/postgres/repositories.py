@@ -186,7 +186,7 @@ class SqlAlchemyRepository(Repository):
         try:
             self.session.flush()
         except IntegrityError as exc:
-            raise ConflictError(str(exc.orig)) from exc
+            raise ConflictError("Database integrity conflict") from exc
 
     def _expect_one(self, stmt: Any) -> None:
         result: Any = self.session.execute(stmt)

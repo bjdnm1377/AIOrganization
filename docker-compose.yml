@@ -4,9 +4,9 @@ services:
     environment:
       POSTGRES_DB: ai_org
       POSTGRES_USER: ai_org_app
-      POSTGRES_PASSWORD: ai_org_app
+      POSTGRES_PASSWORD: ${AI_ORG_POSTGRES_PASSWORD:?AI_ORG_POSTGRES_PASSWORD must be set}
     ports:
-      - "5432:5432"
+      - "127.0.0.1:5432:5432"
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ai_org_app -d ai_org"]
       interval: 5s

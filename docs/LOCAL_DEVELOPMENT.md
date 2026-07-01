@@ -40,7 +40,8 @@ host for this stage did not have Docker installed.
 To run the API against PostgreSQL after migrations:
 
 ```powershell
-$env:AI_ORG_DATABASE_URL = "postgresql+psycopg://ai_org_app:ai_org_app@localhost:5432/ai_org"
+$env:AI_ORG_POSTGRES_PASSWORD = Read-Host "Local PostgreSQL password"
+$env:AI_ORG_DATABASE_URL = "postgresql+psycopg://ai_org_app:${env:AI_ORG_POSTGRES_PASSWORD}@localhost:5432/ai_org"
 $env:AI_ORG_CHECKPOINT_SETUP = "true"
 .\.venv\Scripts\python -m uvicorn ai_org.adapters.api.main:create_app --factory --reload
 ```

@@ -45,6 +45,7 @@ prevents infinite loops.
 ## Idempotency Rules
 
 - Completed tasks are never re-dispatched.
-- WorkerRun idempotency key is `worker-run:{task_id}:{worker_type}:{attempt}`.
-- Approval idempotency key is `approval:{project_id}:{task_id}:execute_high_risk_task`.
+- Production WorkerRun idempotency key is `worker:{task_id}:{attempt}:produce`.
+- Review WorkerRun idempotency key is `worker:{task_id}:{attempt}:review`.
+- Approval idempotency key is `approval:{task_id}:{next_attempt}:execute`.
 - Repository implementations enforce optimistic version checks.

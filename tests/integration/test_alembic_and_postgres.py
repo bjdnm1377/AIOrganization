@@ -5,6 +5,7 @@ import subprocess
 import sys
 import time
 from pathlib import Path
+from uuid import uuid4
 
 import pytest
 
@@ -21,8 +22,9 @@ from ai_org.orchestration.postgres_checkpoint import postgres_checkpointer
 from ai_org.orchestration.workflow import LangGraphWorkflow
 from ai_org.protocols.schemas import ApprovalDecision, CreateProjectRequest, TaskSpec
 
-SQLALCHEMY_URL = "postgresql+psycopg://ai_org_app:ai_org_app@localhost:5432/ai_org"
-PSYCOPG_URL = "postgresql://ai_org_app:ai_org_app@localhost:5432/ai_org"
+TEST_DB_PASSWORD = f"test_{uuid4().hex}"
+SQLALCHEMY_URL = f"postgresql+psycopg://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
+PSYCOPG_URL = f"postgresql://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
 
 
 def test_alembic_migration_declares_required_tables_and_schemas() -> None:
@@ -50,7 +52,11 @@ def test_postgresql_migrations_and_checkpoint_recovery_are_docker_gated(
         _wait_for_postgres()
         _run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
-            env={**os.environ, "AI_ORG_DATABASE_URL": SQLALCHEMY_URL},
+            env={
+                **os.environ,
+                "AI_ORG_DATABASE_URL": SQLALCHEMY_URL,
+                "AI_ORG_POSTGRES_PASSWORD": TEST_DB_PASSWORD,
+            },
         )
 
         engine = build_engine(SQLALCHEMY_URL)
@@ -121,7 +127,11 @@ def test_postgresql_migrations_and_checkpoint_recovery_are_docker_gated(
 
 
 def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
-    return _run(["docker", "compose", *args], check=check)
+    return _run(
+        ["docker", "compose", *args],
+        check=check,
+        env={**os.environ, "AI_ORG_POSTGRES_PASSWORD": TEST_DB_PASSWORD},
+    )
 
 
 def _run(

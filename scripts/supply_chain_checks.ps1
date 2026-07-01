@@ -22,6 +22,7 @@ $paths = @(
     "README.md",
     "AGENTS.md",
     "ACCEPTANCE_REPORT.md",
+    "FINAL_VERIFICATION_REPORT.md",
     "pyproject.toml",
     "requirements.in",
     "requirements-lock.txt",
