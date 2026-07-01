@@ -1,4 +1,4 @@
-# ADR-002: Coding Worker 接入策略
+﻿# ADR-002: Coding Worker 接入策略
 
 日期：2026-07-01
 状态：Accepted

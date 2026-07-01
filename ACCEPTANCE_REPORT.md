@@ -1,92 +1,417 @@
-# 第三方依赖选型阶段验收报告
+﻿# Acceptance Report - First Runnable Skeleton
 
-日期：2026-07-01
+Date: 2026-07-01
 
-阶段目标：完成第三方 GitHub 项目和开源依赖的技术选型，不开始大规模业务代码开发。
+Stage: First runnable skeleton and minimal persistent workflow
 
-## 阶段结论
+Status: IMPLEMENTATION COMPLETE / PARTIAL ENVIRONMENT VERIFICATION
 
-第一版推荐采用：
+The implementation, unit tests, workflow tests, FastAPI tests, lint, type checks,
+secret scan, vulnerability scan, license report, and SBOM generation are complete
+on this host. Docker is not installed on this host, so the live PostgreSQL
+Docker integration test is skipped locally. The Docker-gated test is implemented
+to run the real PostgreSQL migration and checkpoint recovery path when Docker is
+available.
 
-- LangGraph：第一层 workflow、state orchestration、checkpoint、interrupt/resume 底座；
-- `langgraph-checkpoint-postgres`：LangGraph checkpoint 的 PostgreSQL 持久化；
-- FastAPI：外部控制 API；
-- Pydantic：内部 DTO、配置和边界校验；
-- PostgreSQL：业务状态、审计、预算、权限和 checkpoint 存储；
-- Docker + Git worktree：Coding/Simulation/Virtuoso 等高风险执行任务隔离；
-- Codex Adapter：第一版 Coding Worker 接入方式。
+## 1. Stage Goal
 
-第一版不采用：
+Implement a runnable, testable, persistable minimal vertical workflow:
 
-- OpenAI Agents SDK：不进第一层；保留为后续 Worker runtime 候选；
-- CrewAI：不采用，避免与 LangGraph 和内部领域层重叠；
-- MetaGPT：不采用，Python `<3.12` 兼容限制和维护节奏不满足第一版；
-- OpenHands：不进第一版；后续仅可作为高风险 Coding Worker 候选；
-- Microsoft Agent Framework：不采用，保留为未来替代或 Microsoft/Azure worker runtime 候选。
+Create project -> create predefined task -> select ready task -> check risk ->
+dispatch Mock Worker -> independent Review Worker -> update task status -> update
+project status -> write audit records -> query through FastAPI.
 
-## 核心理由
+High-risk tasks interrupt for approval, persist approval/checkpoint state, resume
+after approval decision, and complete or block deterministically.
 
-LangGraph 最贴合第一层“状态编排、checkpoint、中断恢复、人工审批”的需求。Project、Task、Approval、Audit、Permission、Budget 和 WorkerRun 保持自研，第三方框架通过 Adapter 隔离，避免把第三方数据模型扩散到业务域。
+## 2. Actual Completion
 
-OpenHands、CrewAI、MetaGPT、Microsoft Agent Framework 与第一层编排或第二层 Coding Worker 能力存在重叠。第一版只选择一个编排底座，先把权限、预算、审批、审计、Docker/worktree 隔离和 Codex Adapter 打牢。
+- Python package skeleton under `src/ai_org`.
+- Framework-free domain model, enums, errors, and transition guards.
+- Pydantic v2 protocols:
+  `CreateProjectRequest`, `ProjectResponse`, `TaskSpec`, `AgentResult`,
+  `ReviewReport`, `ApprovalRequest`, `ApprovalDecision`, `WorkflowStatus`.
+- Worker port, WorkerRegistry, deterministic Mock Workers, independent
+  MockReviewWorker, and Codex dry-run worker.
+- In-memory repository for no-key local tests.
+- PostgreSQL SQLAlchemy models, repository, session helpers, and Alembic
+  migration.
+- FastAPI app factory that uses in-memory storage by default and switches to
+  PostgreSQL when `AI_ORG_DATABASE_URL` is set.
+- Explicit SQLAlchemy commit/rollback hooks for PostgreSQL service operations.
+- LangGraph workflow with approval interrupt/resume and bounded rework loop.
+- Strict checkpoint serializer setup with pickle fallback disabled.
+- Docker-gated PostgreSQL checkpoint recovery test that recreates business
+  session/service/workflow before resume when Docker is available.
+- Supply-chain script for vulnerability, license, SBOM, and secret scans.
+- Documentation for architecture, API, state machine, database, checkpoint
+  security, local development, testing, threat model, and roadmap.
 
-## 关键许可证风险
+## 3. Not Completed / Environment Limits
 
-- LangGraph、OpenAI Agents SDK、CrewAI、MetaGPT、Microsoft Agent Framework、FastAPI、Pydantic 均按官方 LICENSE 记录为 MIT，允许商业使用和修改，但必须保留版权和许可证声明。
-- PostgreSQL 使用 PostgreSQL License，允许商业使用、修改和分发，需保留版权和许可声明。
-- OpenHands 根 LICENSE 指出 `enterprise/` 目录单独授权；`enterprise/LICENSE` 是 PolyForm Free Trial License 1.0.0，不允许分发副本，且每个日历年超过 30 天使用需要商业许可证。第一版明确排除 `enterprise/`。
+- Live PostgreSQL integration test did not run on this host because `docker` is
+  not installed.
+- PostgreSQL database roles and grants are documented but not provisioned
+  locally.
+- Checkpoint cleanup/retention job is documented but not implemented.
+- The lock file was generated under Python 3.13 because Python 3.12 is not
+  installed on this host.
+- No real LLM, real Codex, OpenHands, or untrusted-code sandbox is integrated in
+  this stage by design.
 
-## 审查处理
+## 4. Real File List
 
-已使用独立架构审查子 Agent 和安全/许可证审查子 Agent。
+Key stage files:
 
-已解决的高/中风险发现：
+- `.editorconfig`
+- `.gitignore`
+- `AGENTS.md`
+- `README.md`
+- `pyproject.toml`
+- `requirements.in`
+- `requirements-lock.txt`
+- `docker-compose.yml`
+- `scripts/supply_chain_checks.ps1`
+- `alembic.ini`
+- `alembic/env.py`
+- `alembic/versions/0001_initial_business_schema.py`
+- `src/ai_org/domain/enums.py`
+- `src/ai_org/domain/errors.py`
+- `src/ai_org/domain/models.py`
+- `src/ai_org/domain/state_machine.py`
+- `src/ai_org/protocols/schemas.py`
+- `src/ai_org/ports/repositories.py`
+- `src/ai_org/ports/workers.py`
+- `src/ai_org/application/service.py`
+- `src/ai_org/application/mappers.py`
+- `src/ai_org/orchestration/checkpoint_security.py`
+- `src/ai_org/orchestration/workflow.py`
+- `src/ai_org/orchestration/postgres_checkpoint.py`
+- `src/ai_org/adapters/memory/repositories.py`
+- `src/ai_org/adapters/postgres/models.py`
+- `src/ai_org/adapters/postgres/repositories.py`
+- `src/ai_org/adapters/postgres/session.py`
+- `src/ai_org/adapters/workers/mock.py`
+- `src/ai_org/adapters/api/main.py`
+- `tests/unit/test_protocols.py`
+- `tests/unit/test_domain_state_machine.py`
+- `tests/unit/test_worker_registry.py`
+- `tests/unit/test_checkpoint_security.py`
+- `tests/unit/test_architecture_boundaries.py`
+- `tests/unit/test_memory_repository.py`
+- `tests/integration/test_workflow_scenarios.py`
+- `tests/integration/test_alembic_and_postgres.py`
+- `tests/e2e/test_api.py`
+- `docs/ARCHITECTURE_OVERVIEW.md`
+- `docs/STATE_MACHINE.md`
+- `docs/TASK_PROTOCOL.md`
+- `docs/DATABASE_DESIGN.md`
+- `docs/CHECKPOINT_SECURITY.md`
+- `docs/API.md`
+- `docs/LOCAL_DEVELOPMENT.md`
+- `docs/TESTING.md`
+- `docs/THREAT_MODEL.md`
+- `docs/ROADMAP.md`
 
-- 将 Coding Worker 沙箱策略从“必要时 Docker”修正为：shell、测试、build、formatter、linter、用户代码执行和依赖下载默认必须进入 Docker 或远程受控沙箱；
-- 明确 WorkerRun 只有一个实际启动入口：LangGraph node 调用 Worker Dispatcher side-effect port；
-- 增加 `LANGGRAPH_STRICT_MSGPACK=true` 或显式 allowlist 的 checkpoint 反序列化安全要求；
-- 增加 checkpoint 敏感数据分级、TTL、加密、独立 schema/DB role 和启动自检要求；
-- 增加外部模型/provider、tracing、telemetry、私有代码和 prompt 外发边界；
-- 明确 Git worktree 不是安全边界，并补充 symlink、submodule、LFS、hooks、clean/smudge、realpath 和 diff 扫描控制；
-- 强化 Docker sandbox：非 root、无 privileged、`cap-drop=ALL`、只读 rootfs、seccomp/AppArmor、无 host PID/IPC/network、egress allowlist、禁止挂载 SSH agent/Git/cloud 凭据；
-- 明确 OpenHands `enterprise/` 的 PolyForm Free Trial 限制；
-- 补充 LangGraph 替换成本：in-flight workflow、历史 checkpoint、审批 token、WorkerRun、幂等键、审计回放、双跑和回滚。
+Generated but not committed:
 
-## 生成文件
+- `reports/pip-audit-report.json`
+- `reports/license-report.json`
+- `reports/sbom.json`
+- `reports/detect-secrets-report.json`
 
-- `docs/DEPENDENCY_EVALUATION.md`
-- `docs/THIRD_PARTY_ARCHITECTURE.md`
-- `docs/LICENSE_INVENTORY.md`
-- `docs/DEPENDENCY_UPDATE_POLICY.md`
-- `docs/DECISIONS/ADR-001-agent-orchestration-framework.md`
-- `docs/DECISIONS/ADR-002-coding-worker-integration.md`
-- `ACCEPTANCE_REPORT.md`
+## 5. Core Architecture
 
-## 未执行事项
+Dependency direction:
 
-- 未安装所有候选框架；
-- 未 fork 或复制第三方仓库源码；
-- 未接入真实 API key；
-- 未启动会产生费用的服务；
-- 未实现完整业务代码。
+FastAPI adapter -> Application service -> Domain + ports -> Repository/Worker
+adapters.
 
-## 下一阶段建议
+LangGraph is isolated in `src/ai_org/orchestration`. The domain layer does not
+import LangGraph, FastAPI, SQLAlchemy, or Alembic. Worker outputs are structured
+Pydantic payloads, and the Review Worker is independent from the producing
+worker.
 
-进入第一版骨架实现：
+## 6. Database Tables And Migrations
 
-1. 初始化 Python 3.12 项目结构和依赖锁；
-2. 建立 FastAPI health/control skeleton；
-3. 定义 Pydantic DTO 和领域边界；
-4. 建立 PostgreSQL schema/migration 草案；
-5. 实现 LangGraph Adapter 最小 workflow；
-6. 验证 checkpoint、interrupt、人工审批 resume；
-7. 实现 Codex Adapter dry-run；
-8. 实现 Git worktree + Docker sandbox spike；
-9. 加入 license scan、SBOM、secret scan 和基础供应链检查。
+Migration:
 
-## 验收选项
+- `alembic/versions/0001_initial_business_schema.py`
 
-- 通过：进入第一版骨架实现；
-- 驳回：重新进行依赖选型；
-- 暂停：暂不继续；
-- 调整目标：重新规划技术组合。
+Business schema:
+
+- `ai_org.projects`
+- `ai_org.tasks`
+- `ai_org.worker_runs`
+- `ai_org.approvals`
+- `ai_org.audit_events`
+
+Checkpoint schema:
+
+- `langgraph_checkpoint`
+
+Runtime checkpoint access uses `postgres_checkpointer(..., setup=False)`. DDL is
+only run when `setup=True`, which is reserved for initialization/tests.
+
+## 7. API List
+
+- `GET /health`
+- `POST /projects`
+- `GET /projects/{project_id}`
+- `GET /projects/{project_id}/tasks`
+- `POST /projects/{project_id}/run`
+- `GET /projects/{project_id}/status`
+- `GET /projects/{project_id}/approvals`
+- `POST /approvals/{approval_id}/decision`
+- `GET /projects/{project_id}/audit-events`
+
+API errors are sanitized and do not expose database passwords, environment
+variables, checkpoint binary payloads, or stack traces.
+
+## 8. State Machine
+
+Project states:
+
+- `CREATED`
+- `RUNNING`
+- `WAITING_APPROVAL`
+- `REVIEWING`
+- `COMPLETED`
+- `BLOCKED`
+- `FAILED`
+
+Task states:
+
+- `PENDING`
+- `READY`
+- `RUNNING`
+- `WAITING_APPROVAL`
+- `REVIEWING`
+- `ACCEPTED`
+- `REWORK_REQUIRED`
+- `BLOCKED`
+- `FAILED`
+
+Rework is bounded by `max_attempts`. Existing completed tasks are not executed
+again. Existing RUNNING WorkerRuns with no structured output now raise a conflict
+instead of re-executing the worker.
+
+## 9. Checkpoint Security Implementation
+
+- `LANGGRAPH_STRICT_MSGPACK=true` is configured before LangGraph imports.
+- Pickle fallback is disabled.
+- Serializer uses an explicit allowed msgpack module list.
+- Startup self-check validates strict mode.
+- Workflow state is restricted to primitive JSON-like values and serialized
+  Pydantic payloads.
+- Tests cover illegal checkpoint state rejection and pickle/unknown
+  deserialization rejection.
+- Database connections, file handles, locks, model clients, subprocess handles,
+  and executable objects are not stored in checkpoint state.
+
+## 10. Dependencies And Locked Versions
+
+Direct runtime pins:
+
+- `langgraph==1.2.7`
+- `langgraph-checkpoint-postgres==3.1.0`
+- `fastapi==0.138.2`
+- `pydantic==2.13.4`
+- `SQLAlchemy==2.0.51`
+- `alembic==1.18.5`
+- `psycopg[binary]==3.3.4`
+- `uvicorn==0.49.0`
+- `httpx==0.28.1`
+
+Dev/test pins include `pytest==9.1.1`, `ruff==0.15.20`, `mypy==2.1.0`,
+`pip-audit==2.10.1`, `pip-licenses==5.5.5`, `cyclonedx-bom==7.3.0`, and
+`detect-secrets==1.5.0`.
+
+`requirements-lock.txt` was generated from the local Python 3.13 environment.
+Before production release, regenerate and verify the lock file under the selected
+Python 3.12 baseline.
+
+## 11. Automated Test Results
+
+Latest commands:
+
+- `.\.venv\Scripts\python -m ruff format .`
+  - Exit code: 0
+  - Result: `41 files left unchanged`
+- `.\.venv\Scripts\python -m ruff check .`
+  - Exit code: 0
+  - Result: `All checks passed!`
+- `.\.venv\Scripts\python -m mypy src tests`
+  - Exit code: 0
+  - Result: `Success: no issues found in 39 source files`
+- `.\.venv\Scripts\python -m pytest -q`
+  - Exit code: 0
+  - Result: `27 passed, 1 skipped, 1 warning`
+
+Skipped test:
+
+- Docker/PostgreSQL integration test skipped because Docker is unavailable.
+
+Docker commands:
+
+- `docker --version`
+  - Exit code: 1
+  - Result: `docker` command not found
+- `docker compose version`
+  - Exit code: 1
+  - Result: `docker` command not found
+
+## 12. Supply Chain, License, Vulnerability, Secret Scan
+
+Command:
+
+- `.\scripts\supply_chain_checks.ps1`
+  - Exit code: 0
+
+Results:
+
+- `pip-audit`: 106 dependencies audited, 0 known vulnerabilities.
+- `pip-audit` skip: local editable package `ai-organization` is not on PyPI.
+- `pip-licenses`: 103 package license entries generated.
+- CycloneDX SBOM: 107 components generated.
+- `detect-secrets`: 0 findings.
+
+Generated reports are under `reports/` and are ignored by Git.
+
+## 13. Reviewer Findings And Handling
+
+Pre-implementation subagents:
+
+- Architecture review agent.
+- Database review agent.
+- Testing review agent.
+- Security review agent.
+
+Final reviewer agent:
+
+- Initial high findings:
+  - FastAPI did not provide PostgreSQL persistence path.
+  - PostgreSQL transaction boundaries were not explicit.
+  - Existing RUNNING WorkerRun could be executed again.
+  - PostgreSQL checkpoint recovery test did not recreate business session.
+- Initial medium findings:
+  - Checkpoint deserialization rejection test missing.
+  - Checkpoint setup used runtime DDL by default.
+  - Acceptance report was stale.
+
+Resolution:
+
+- Added PostgreSQL FastAPI container selected by `AI_ORG_DATABASE_URL`.
+- Wired SQLAlchemy commit/rollback hooks into PostgreSQL service operations.
+- Existing RUNNING production/review WorkerRuns now raise `ConflictError`.
+- PostgreSQL Docker test now closes/recreates session/service/workflow before
+  resume.
+- Added checkpoint deserialization rejection tests.
+- `postgres_checkpointer()` defaults to `setup=False`; setup DDL is explicit.
+- This report was updated with real scan and verification results.
+
+Reviewer re-check:
+
+- Previous high/medium code findings resolved.
+- Remaining issue was stale report content; fixed by this report update.
+
+Residual low risks:
+
+- PostgreSQL API container currently uses a long-lived SQLAlchemy session; a
+  later concurrency hardening pass should move to session-per-request or
+  session-per-workflow.
+- Docker-gated PostgreSQL recovery is implemented but not locally executed
+  without Docker.
+
+## 14. Known Issues
+
+- Live PostgreSQL integration not executed on this host because Docker is absent.
+- PostgreSQL role provisioning and checkpoint cleanup are not implemented.
+- No real Coding Worker sandbox is implemented in this stage.
+- The FastAPI default remains in-memory when `AI_ORG_DATABASE_URL` is not set.
+
+## 15. Risks
+
+- Runtime PostgreSQL concurrency needs hardening before multi-user production.
+- `psycopg[binary]` should be re-reviewed before binary redistribution.
+- Python 3.12 lock verification is still required for the production baseline.
+
+## 16. Next Stage Recommendation
+
+Proceed to Codex Coding Worker isolation execution:
+
+- Keep Codex behind the Worker port.
+- Use task-scoped Git worktrees.
+- Add Docker sandbox design and tests before executing real shell commands.
+- Capture command logs, changed files, test output, and review evidence.
+- Keep approval gates for permission increases.
+
+## 17. Current Git Branch
+
+- `master`
+
+## 18. Stage Git Commit Hash
+
+The stage commit is created after this report is finalized. The final response
+records the immutable commit hash. A Git commit cannot embed its own final hash
+inside tracked file content without changing that hash.
+
+Base commit before this stage:
+
+- `8fa56f4`
+
+## 19. git status --short Result Before Commit
+
+```text
+ M .editorconfig
+ M ACCEPTANCE_REPORT.md
+ M docs/DECISIONS/ADR-001-agent-orchestration-framework.md
+ M docs/DECISIONS/ADR-002-coding-worker-integration.md
+ M docs/DEPENDENCY_EVALUATION.md
+ M docs/DEPENDENCY_UPDATE_POLICY.md
+ M docs/LICENSE_INVENTORY.md
+ M docs/THIRD_PARTY_ARCHITECTURE.md
+?? .gitignore
+?? AGENTS.md
+?? README.md
+?? alembic.ini
+?? alembic/
+?? docker-compose.yml
+?? docs/API.md
+?? docs/ARCHITECTURE_OVERVIEW.md
+?? docs/CHECKPOINT_SECURITY.md
+?? docs/DATABASE_DESIGN.md
+?? docs/LOCAL_DEVELOPMENT.md
+?? docs/ROADMAP.md
+?? docs/STATE_MACHINE.md
+?? docs/TASK_PROTOCOL.md
+?? docs/TESTING.md
+?? docs/THREAT_MODEL.md
+?? pyproject.toml
+?? requirements-lock.txt
+?? requirements.in
+?? scripts/
+?? src/
+?? tests/
+```
+
+## 20. Key Git Diff Summary
+
+- Added the Python application skeleton under `src/ai_org`.
+- Added unit, integration, workflow, API, and Docker-gated PostgreSQL tests.
+- Added Alembic migration and PostgreSQL SQLAlchemy adapter.
+- Added FastAPI app with memory/PostgreSQL container modes.
+- Added strict checkpoint security helper and tests.
+- Added dependency pins, lock file, supply-chain script, and Docker Compose.
+- Added required architecture, protocol, database, API, testing, security, and
+  roadmap documentation.
+- Converted Markdown files to UTF-8 with BOM to reduce Windows editor mojibake.
+
+`git diff --check` exit code: 0.
+
+## 21. User Acceptance Options
+
+- Pass: proceed to Codex Coding Worker isolation execution stage.
+- Reject: revise this stage according to acceptance feedback.
+- Pause: do not continue for now.
+- Adjust goal: re-plan the next stage.

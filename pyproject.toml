@@ -1,0 +1,63 @@
+[build-system]
+requires = ["setuptools==80.9.0", "wheel==0.45.1"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "ai-organization"
+version = "0.1.0"
+description = "Minimal persistent AI organization workflow skeleton."
+readme = "README.md"
+requires-python = ">=3.12,<3.15"
+license = { text = "Proprietary" }
+dependencies = [
+  "alembic==1.18.5",
+  "fastapi==0.138.2",
+  "httpx==0.28.1",
+  "langgraph==1.2.7",
+  "langgraph-checkpoint-postgres==3.1.0",
+  "psycopg[binary]==3.3.4",
+  "pydantic==2.13.4",
+  "SQLAlchemy==2.0.51",
+  "uvicorn==0.49.0",
+]
+
+[project.optional-dependencies]
+dev = [
+  "cyclonedx-bom==7.3.0",
+  "detect-secrets==1.5.0",
+  "mypy==2.1.0",
+  "pip-audit==2.10.1",
+  "pip-licenses==5.5.5",
+  "pytest==9.1.1",
+  "ruff==0.15.20",
+]
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["src"]
+markers = [
+  "docker: requires Docker to be available",
+  "postgres: requires PostgreSQL integration database",
+]
+
+[tool.ruff]
+target-version = "py312"
+line-length = 100
+src = ["src", "tests"]
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "SIM"]
+
+[tool.mypy]
+python_version = "3.12"
+strict = true
+files = ["src", "tests"]
+plugins = []
+warn_unused_ignores = false
+
+[[tool.mypy.overrides]]
+module = ["langgraph.*", "langgraph_checkpoint.*"]
+ignore_missing_imports = true

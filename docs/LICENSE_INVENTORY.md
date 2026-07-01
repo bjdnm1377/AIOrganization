@@ -1,4 +1,4 @@
-# 第三方许可证清单
+﻿# 第三方许可证清单
 
 核验日期：2026-07-01
 
@@ -95,3 +95,27 @@ OpenHands 根 LICENSE 明确说明：
 - FastAPI LICENSE：https://github.com/fastapi/fastapi/blob/master/LICENSE
 - Pydantic LICENSE：https://github.com/pydantic/pydantic/blob/main/LICENSE
 - PostgreSQL COPYRIGHT：https://github.com/postgres/postgres/blob/master/COPYRIGHT
+
+## Current Stage Direct Dependency Inventory
+
+This section records the implementation dependencies currently locked in
+`pyproject.toml` and `requirements-lock.txt`. It is not legal advice.
+
+| Project | Repository / Package | License | Use | Source modified | Notice required | Special directories | Current conclusion |
+| --- | --- | --- | --- | --- | --- | --- | --- |
+| LangGraph | `langgraph==1.2.7` | MIT | Workflow orchestration and interrupt/resume adapter | No | Preserve upstream license in redistributions | No vendored source | Adopted behind orchestration adapter |
+| langgraph-checkpoint-postgres | `langgraph-checkpoint-postgres==3.1.0` | MIT | PostgreSQL checkpoint saver | No | Preserve upstream license in redistributions | No vendored source | Adopted with strict msgpack serializer |
+| FastAPI | `fastapi==0.138.2` | MIT | HTTP control/query API | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| Pydantic | `pydantic==2.13.4` | MIT | Internal request/response protocol validation | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| SQLAlchemy | `SQLAlchemy==2.0.51` | MIT | PostgreSQL ORM mapping and repository implementation | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| Alembic | `alembic==1.18.5` | MIT | Database migrations | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| psycopg | `psycopg[binary]==3.3.4` | LGPL-3.0-only with exceptions for package use | PostgreSQL driver and checkpoint connection | No | Preserve upstream license; review binary redistribution policy before packaging | Binary package included by lockfile | Adopted for local/dev, re-review before distributing binaries |
+| Uvicorn | `uvicorn==0.49.0` | BSD-3-Clause | Local ASGI server | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| HTTPX | `httpx==0.28.1` | BSD-3-Clause | FastAPI test client dependency path | No | Preserve upstream license in redistributions | No vendored source | Adopted |
+| pytest | `pytest==9.1.1` | MIT | Tests only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| Ruff | `ruff==0.15.20` | MIT | Formatting and lint only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| mypy | `mypy==2.1.0` | MIT | Type checking only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| pip-audit | `pip-audit==2.10.1` | Apache-2.0 | Vulnerability scan only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| pip-licenses | `pip-licenses==5.5.5` | MIT | License report only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| cyclonedx-bom | `cyclonedx-bom==7.3.0` | Apache-2.0 | SBOM generation only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
+| detect-secrets | `detect-secrets==1.5.0` | Apache-2.0 | Secret scanning only | No | Preserve upstream license in redistributions | Dev dependency only | Adopted for dev/test |
