@@ -42,6 +42,7 @@ class Task:
     risk_level: RiskLevel
     dependencies: list[str]
     acceptance_criteria: list[str]
+    metadata: dict[str, Any] = field(default_factory=dict)
     attempt_count: int = 0
     max_attempts: int = 2
     created_at: datetime = field(default_factory=utc_now)

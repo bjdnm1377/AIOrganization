@@ -34,6 +34,7 @@ def task_to_response(task: Task) -> TaskResponse:
         risk_level=task.risk_level,
         dependencies=task.dependencies,
         acceptance_criteria=task.acceptance_criteria,
+        metadata=task.metadata,
         attempt_count=task.attempt_count,
         max_attempts=task.max_attempts,
         created_at=task.created_at,

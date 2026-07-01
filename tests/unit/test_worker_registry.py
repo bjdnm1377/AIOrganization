@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import pytest
 
+from ai_org.adapters.codex.worker import CodexWorker
 from ai_org.adapters.workers.mock import DefaultWorkerRegistry
 from ai_org.domain.enums import WorkerType
 
@@ -11,6 +12,7 @@ def test_worker_registry_returns_mock_workers() -> None:
 
     assert registry.get_worker(WorkerType.RESEARCH.value).worker_type == "research"
     assert registry.get_worker(WorkerType.CODING.value).worker_type == "coding"
+    assert isinstance(registry.get_worker(WorkerType.CODEX.value), CodexWorker)
     assert registry.get_review_worker().worker_type == "review"
 
 

@@ -1,5 +1,8 @@
 ﻿# Acceptance Report - First Runnable Skeleton
 
+Current stage addendum: Codex Coding Worker isolation is tracked in
+`CODEX_WORKER_ACCEPTANCE_REPORT.md`.
+
 Date: 2026-07-01
 
 Stage: First runnable skeleton and minimal persistent workflow

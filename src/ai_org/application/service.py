@@ -105,6 +105,7 @@ class ProjectApplicationService:
                 risk_level=spec.risk_level,
                 dependencies=spec.dependencies,
                 acceptance_criteria=spec.acceptance_criteria,
+                metadata=spec.metadata,
                 max_attempts=spec.max_attempts,
                 idempotency_key=f"{project.project_id}:task:{index}",
             )
@@ -275,7 +276,11 @@ class ProjectApplicationService:
             worker_type=task.worker_type,
             status=WorkerRunStatus.RUNNING,
             structured_input=redact(
-                {"objective": task.objective, "attempt_number": attempt_number}
+                {
+                    "objective": task.objective,
+                    "attempt_number": attempt_number,
+                    "task_metadata": task.metadata,
+                }
             ),
             structured_output=None,
             attempt_number=attempt_number,
@@ -349,6 +354,20 @@ class ProjectApplicationService:
             run.worker_type,
             {"run_id": run.run_id, "status": target.value},
         )
+        if result.metadata.get("coding_worker") is True:
+            self.audit(
+                task.project_id,
+                task.task_id,
+                "coding_worker.completed",
+                ActorType.WORKER,
+                run.worker_type,
+                {
+                    "run_id": run.run_id,
+                    "mode": result.metadata.get("codex_mode"),
+                    "changed_files": result.metadata.get("changed_files", []),
+                    "violations": result.metadata.get("policy_violations", []),
+                },
+            )
 
     def deterministic_validation(self, result: AgentResult) -> None:
         if result.status == AgentResultStatus.FAILED:

@@ -25,7 +25,9 @@ from ai_org.orchestration.workflow import LangGraphWorkflow
 from ai_org.protocols.schemas import ApprovalDecision, CreateProjectRequest, TaskSpec
 
 TEST_DB_PASSWORD = f"test_{uuid4().hex}"
-DEFAULT_SQLALCHEMY_URL = f"postgresql+psycopg://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
+DEFAULT_SQLALCHEMY_URL = (
+    f"postgresql+psycopg://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org?connect_timeout=5"
+)
 SQLALCHEMY_URL = os.environ.get("AI_ORG_DATABASE_URL", DEFAULT_SQLALCHEMY_URL)
 PSYCOPG_URL = os.environ.get(
     "AI_ORG_CHECKPOINT_DATABASE_URL",
@@ -40,6 +42,9 @@ USE_EXISTING_POSTGRES = os.environ.get("AI_ORG_USE_EXISTING_POSTGRES", "").lower
 
 def test_alembic_migration_declares_required_tables_and_schemas() -> None:
     migration = Path("alembic/versions/0001_initial_business_schema.py").read_text(encoding="utf-8")
+    metadata_migration = Path("alembic/versions/0002_add_task_metadata.py").read_text(
+        encoding="utf-8"
+    )
     for token in (
         "ai_org",
         "langgraph_checkpoint",
@@ -51,6 +56,7 @@ def test_alembic_migration_declares_required_tables_and_schemas() -> None:
         "uq_worker_runs_idempotency_key",
     ):
         assert token in migration
+    assert "metadata" in metadata_migration
 
 
 @pytest.mark.postgres
@@ -64,13 +70,12 @@ def test_postgresql_migrations_and_checkpoint_recovery() -> None:
     try:
         if managed_compose:
             _wait_for_compose_postgres()
-        else:
-            _wait_for_database_url(PSYCOPG_URL)
+        _wait_for_database_url(PSYCOPG_URL)
         _run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             env={
                 **os.environ,
-                "AI_ORG_DATABASE_URL": SQLALCHEMY_URL,
+                "AI_ORG_DATABASE_URL": _with_connect_timeout(SQLALCHEMY_URL),
                 "AI_ORG_POSTGRES_PASSWORD": TEST_DB_PASSWORD,
             },
         )
@@ -217,3 +222,10 @@ def _wait_for_database_url(url: str) -> None:
             last_error = str(exc)
             time.sleep(2)
     pytest.fail(f"PostgreSQL service did not become ready within 90 seconds: {last_error}")
+
+
+def _with_connect_timeout(url: str) -> str:
+    if "connect_timeout=" in url:
+        return url
+    separator = "&" if "?" in url else "?"
+    return f"{url}{separator}connect_timeout=5"

@@ -1,4 +1,4 @@
-﻿# Task Protocol
+# Task Protocol
 
 ## Pydantic Contracts
 
@@ -13,8 +13,22 @@ The shared protocol models are defined in `src/ai_org/protocols/schemas.py`.
 - `ApprovalDecision`
 - `WorkflowStatus`
 
-Workers must return an `AgentResult`. A free-text-only worker response is not
-accepted as the protocol shape.
+Workers must return an `AgentResult`; free-text-only worker responses are not an
+accepted protocol shape.
+
+## TaskSpec Metadata
+
+`TaskSpec.metadata` is persisted on `Task.metadata` and is used for constrained
+execution settings. For Codex tasks, supported keys include:
+
+- `codex_mode`: `dry_run`, `mock`, or `local_cli`.
+- `allowed_files` and `forbidden_files`.
+- `allowed_commands` and `forbidden_commands`.
+- `required_tests`.
+- `mock_output_file`.
+- `simulate_forbidden_file`, `simulate_test_failure`,
+  `simulate_not_configured`, and `simulate_secret_output` for deterministic
+  tests.
 
 ## AgentResult
 
@@ -31,26 +45,20 @@ accepted as the protocol shape.
 - `unresolved_questions`
 - `metadata`
 
-The current Mock Workers return deterministic results and never call external
-services.
+Codex Worker metadata includes `codex_mode`, `worktree_path`, `branch_name`,
+`base_commit`, `head_commit`, `changed_files`, `diff_summary`, `tests_run`,
+`command_logs`, optional session identifiers, `blocked_reason`, and
+`policy_violations`.
 
 ## ReviewReport
 
-`ReviewReport` contains:
+The Review Worker is separate from production workers. It can accept, reject, or
+request rework. Coding Worker results with forbidden file changes, disallowed
+commands, suspicious diff markers, or NOT_CONFIGURED runtime status are not
+accepted. Failed coding tests trigger bounded rework.
 
-- `task_id`
-- `decision`
-- `criteria_results`
-- `defects`
-- `rework_instructions`
-- `confidence`
+## Real Codex Status
 
-The review worker is separate from production workers. It can accept, reject, or
-request rework. The test scenario uses `force_rework` as a deterministic
-acceptance criterion to exercise bounded retry behavior.
-
-## Codex Stub
-
-`CodexDryRunWorker` implements the same worker interface but returns a dry-run
-result. It does not start Codex, require an API key, run shell commands, or modify
-external repositories.
+`MockCodexClient` and `DryRunCodexClient` are implemented and used by default.
+`LocalCodexCliClient` is a NOT_CONFIGURED stub and does not invoke real Codex in
+this stage.

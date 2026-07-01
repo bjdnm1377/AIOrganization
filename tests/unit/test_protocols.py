@@ -17,11 +17,18 @@ def test_create_project_request_validates_task_specs() -> None:
     request = CreateProjectRequest(
         title="Build",
         goal="Create skeleton",
-        tasks=[TaskSpec(title="Research", objective="Collect facts")],
+        tasks=[
+            TaskSpec(
+                title="Research",
+                objective="Collect facts",
+                metadata={"allowed_files": ["docs/**"]},
+            )
+        ],
     )
 
     assert request.tasks[0].worker_type == "research"
     assert request.tasks[0].risk_level == "LOW"
+    assert request.tasks[0].metadata["allowed_files"] == ["docs/**"]
 
 
 def test_protocols_reject_extra_fields_and_free_text_worker_result() -> None:

@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 
+from ai_org.adapters.codex.clients import DryRunCodexClient
+from ai_org.adapters.codex.worker import CodexWorker
 from ai_org.domain.enums import AgentResultStatus, ReviewDecision, WorkerType
 from ai_org.domain.models import Task
 from ai_org.ports.workers import ReviewWorker, Worker, WorkerRegistry, WorkerRequest
@@ -49,7 +52,15 @@ class CodexDryRunWorker:
             assumptions=["Real Codex integration is intentionally disabled."],
             risks=[],
             unresolved_questions=[],
-            metadata={"worker_type": self.worker_type, "dry_run": True},
+            metadata={
+                "worker_type": self.worker_type,
+                "coding_worker": True,
+                "codex_mode": "dry_run",
+                "dry_run": True,
+                "changed_files": [],
+                "policy_violations": [],
+                "no_real_codex_started": True,
+            },
         )
 
 
@@ -72,6 +83,9 @@ class MockReviewWorker:
                 rework_instructions=["Retry until max_attempts stops the loop."],
                 confidence=0.95,
             )
+        coding_report = _review_coding_result(task, result, attempt_number)
+        if coding_report is not None:
+            return coding_report
         passed = result.status in {
             AgentResultStatus.SUCCEEDED,
             AgentResultStatus.DRY_RUN,
@@ -123,12 +137,13 @@ class DefaultWorkerRegistry(WorkerRegistry):
     review_worker: ReviewWorker
 
     @classmethod
-    def create(cls) -> DefaultWorkerRegistry:
+    def create(cls, repo_root: str | Path | None = None) -> DefaultWorkerRegistry:
+        root = Path(repo_root or Path.cwd()).resolve()
         workers: dict[str, Worker] = {
             WorkerType.RESEARCH.value: MockResearchWorker(),
             WorkerType.CODING.value: MockCodingWorker(),
             WorkerType.DOCUMENT.value: MockDocumentWorker(),
-            WorkerType.CODEX.value: CodexDryRunWorker(),
+            WorkerType.CODEX.value: _build_codex_worker(root),
         }
         return cls(workers=workers, review_worker=MockReviewWorker())
 
@@ -140,3 +155,75 @@ class DefaultWorkerRegistry(WorkerRegistry):
 
     def get_review_worker(self) -> ReviewWorker:
         return self.review_worker
+
+
+def _review_coding_result(
+    task: Task, result: AgentResult, attempt_number: int
+) -> ReviewReport | None:
+    if result.metadata.get("coding_worker") is not True:
+        return None
+    policy_violations = _string_list(result.metadata.get("policy_violations"))
+    failed_tests = [record.name for record in result.tests_run if record.status == "failed"]
+    not_configured = result.status == AgentResultStatus.NOT_CONFIGURED
+    if policy_violations or not_configured:
+        defects = policy_violations.copy()
+        if not_configured:
+            defects.append("codex:not_configured")
+        return ReviewReport(
+            task_id=task.task_id,
+            decision=ReviewDecision.REJECTED,
+            criteria_results=[
+                CriteriaResult(
+                    criterion="coding_worker_policy",
+                    passed=False,
+                    notes="Coding Worker result violated isolation or configuration policy.",
+                )
+            ],
+            defects=defects,
+            rework_instructions=["Resolve policy violations before another attempt."],
+            confidence=0.96,
+        )
+    if failed_tests:
+        return ReviewReport(
+            task_id=task.task_id,
+            decision=ReviewDecision.REWORK_REQUIRED,
+            criteria_results=[
+                CriteriaResult(
+                    criterion="coding_worker_tests",
+                    passed=False,
+                    notes="One or more deterministic coding checks failed.",
+                )
+            ],
+            defects=[f"test_failed:{name}" for name in failed_tests],
+            rework_instructions=["Fix failed checks and retry within max_attempts."],
+            confidence=0.9,
+        )
+    passed = result.status in {AgentResultStatus.SUCCEEDED, AgentResultStatus.DRY_RUN}
+    return ReviewReport(
+        task_id=task.task_id,
+        decision=ReviewDecision.ACCEPTED if passed else ReviewDecision.REJECTED,
+        criteria_results=[
+            CriteriaResult(
+                criterion=criterion,
+                passed=passed,
+                notes="Coding Worker output reviewed independently by MockReviewWorker.",
+            )
+            for criterion in task.acceptance_criteria
+        ],
+        defects=[] if passed else ["Coding Worker result was not successful."],
+        rework_instructions=[] if passed else ["Produce a successful structured result."],
+        confidence=0.91,
+    )
+
+
+def _string_list(value: object) -> list[str]:
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
+def _build_codex_worker(repo_root: Path) -> Worker:
+    try:
+        return CodexWorker(repo_root, client=DryRunCodexClient())
+    except ValueError:
+        return CodexDryRunWorker()

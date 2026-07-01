@@ -9,6 +9,7 @@ from uuid import uuid4
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
 from fastapi.responses import JSONResponse
+from pydantic import ValidationError
 
 from ai_org.adapters.memory.repositories import InMemoryRepository
 from ai_org.adapters.postgres.repositories import SqlAlchemyRepository
@@ -22,6 +23,7 @@ from ai_org.application.mappers import (
     approval_to_response,
     audit_event_to_response,
     task_to_response,
+    worker_run_to_response,
 )
 from ai_org.application.service import ProjectApplicationService
 from ai_org.domain.errors import ConflictError, DomainError, InvalidTransitionError, NotFoundError
@@ -30,13 +32,16 @@ from ai_org.orchestration.postgres_checkpoint import postgres_checkpointer
 from ai_org.orchestration.workflow import LangGraphWorkflow
 from ai_org.ports.repositories import Repository
 from ai_org.protocols.schemas import (
+    AgentResult,
     ApprovalDecision,
     ApprovalResponse,
+    Artifact,
     AuditEventResponse,
     CreateProjectRequest,
     ErrorResponse,
     ProjectResponse,
     TaskResponse,
+    WorkerRunResponse,
     WorkflowStatus,
 )
 
@@ -123,6 +128,39 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
     def list_tasks(project_id: str) -> list[TaskResponse]:
         active.service.get_project(project_id)
         return [task_to_response(task) for task in active.repo.list_tasks(project_id)]
+
+    @app.get("/projects/{project_id}/worker-runs", response_model=list[WorkerRunResponse])
+    def list_project_worker_runs(project_id: str) -> list[WorkerRunResponse]:
+        active.service.get_project(project_id)
+        tasks = active.repo.list_tasks(project_id)
+        runs = [run for task in tasks for run in active.repo.list_worker_runs(task.task_id)]
+        return [worker_run_to_response(run) for run in runs]
+
+    @app.get("/tasks/{task_id}/worker-runs", response_model=list[WorkerRunResponse])
+    def list_task_worker_runs(task_id: str) -> list[WorkerRunResponse]:
+        if active.repo.get_task(task_id) is None:
+            raise NotFoundError(f"Task {task_id} not found")
+        return [worker_run_to_response(run) for run in active.repo.list_worker_runs(task_id)]
+
+    @app.get("/worker-runs/{run_id}", response_model=WorkerRunResponse)
+    def get_worker_run(run_id: str) -> WorkerRunResponse:
+        run = active.repo.get_worker_run(run_id)
+        if run is None:
+            raise NotFoundError(f"WorkerRun {run_id} not found")
+        return worker_run_to_response(run)
+
+    @app.get("/worker-runs/{run_id}/artifacts", response_model=list[Artifact])
+    def list_worker_run_artifacts(run_id: str) -> list[Artifact]:
+        run = active.repo.get_worker_run(run_id)
+        if run is None:
+            raise NotFoundError(f"WorkerRun {run_id} not found")
+        if not run.structured_output:
+            return []
+        try:
+            result = AgentResult.model_validate(run.structured_output)
+        except ValidationError:
+            return []
+        return result.artifacts
 
     @app.post("/projects/{project_id}/run", response_model=WorkflowStatus)
     def run_project(project_id: str) -> WorkflowStatus:

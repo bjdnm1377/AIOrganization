@@ -1,23 +1,22 @@
-﻿# Testing
+# Testing
 
 ## Test Categories
 
 - Pydantic protocol validation.
-- Domain state transitions.
-- Task dependency readiness.
+- Domain state transitions and task dependency readiness.
 - WorkerRegistry behavior.
-- Approval policy and rejection.
-- Retry and rework limits.
-- Idempotency.
+- Approval, rejection, retry, rework limit, and idempotency.
 - In-memory repository behavior.
-- Alembic migration file presence and schema intent.
+- Alembic migration and PostgreSQL repository/checkpoint recovery.
 - FastAPI endpoint behavior.
 - LangGraph interrupt/resume behavior.
-- Strict msgpack startup self-check.
-- Illegal checkpoint state rejection.
+- Strict msgpack startup self-check and illegal checkpoint state rejection.
 - Sensitive field non-disclosure in API errors.
+- Codex Worker Mock/DryRun behavior.
+- Worktree creation, path traversal defense, and symlink-boundary defense.
+- Coding Worker diff, artifact, command-log, review, rework, and idempotency.
 
-## Commands
+## Local Commands
 
 ```powershell
 .\.venv\Scripts\python -m ruff format .
@@ -26,27 +25,23 @@
 .\.venv\Scripts\python -m pytest -q
 ```
 
+The implementation host currently uses Python 3.13 for local feedback. The
+project baseline gate remains Python 3.12 in GitHub Actions.
+
 ## PostgreSQL Integration
 
-Tests marked `postgres` require a real PostgreSQL database. They can run in two
-modes:
+Tests marked `postgres` run in two modes:
 
-- GitHub Actions service mode: set `AI_ORG_USE_EXISTING_POSTGRES=true`,
-  `AI_ORG_DATABASE_URL`, and `AI_ORG_CHECKPOINT_DATABASE_URL`. This is the
-  preferred CI path.
-- Local Docker Compose mode: if `AI_ORG_USE_EXISTING_POSTGRES` is not set, the
-  test attempts to start `docker-compose.yml`. If Docker is unavailable, it
-  skips with a clear reason.
+- GitHub Actions service mode with `AI_ORG_USE_EXISTING_POSTGRES=true`,
+  `AI_ORG_DATABASE_URL`, and `AI_ORG_CHECKPOINT_DATABASE_URL`.
+- Local Docker Compose mode when Docker is available.
 
-The PostgreSQL integration test runs Alembic, interrupts at approval, closes the
-business session, recreates the repository/service/workflow, resumes from
-PostgreSQL checkpoint, and verifies worker-run counts. A local skip must be
-recorded as an environment limitation in acceptance reports.
+If Docker is unavailable locally, PostgreSQL tests skip with a clear reason.
+CI uses `postgres:16.6`.
 
 ## CI Verification
 
-The GitHub Actions workflow is `.github/workflows/verification.yml`. It uses
-Python 3.12 and a `postgres:16.6` service container, then runs:
+`.github/workflows/verification.yml` uses Python 3.12 and runs:
 
 ```bash
 python -m ruff format --check .
@@ -57,6 +52,12 @@ python -m pytest tests/integration/test_alembic_and_postgres.py -q
 python -m pytest tests/integration/test_workflow_scenarios.py -q
 python -m pytest tests/e2e/test_api.py -q
 python -m pytest tests/unit/test_checkpoint_security.py -q
+python -m pytest \
+  tests/unit/test_worktree_service.py \
+  tests/unit/test_codex_worker.py \
+  tests/integration/test_codex_worker_workflow.py \
+  tests/e2e/test_api.py \
+  -q
 python -m pytest -q
 ```
 
@@ -66,13 +67,6 @@ a license report and CycloneDX SBOM, runs `detect-secrets`, and runs
 
 ## External Services
 
-Tests do not call real LLMs, Codex, OpenHands, paid services, or user-provided
-untrusted code.
-
-## Supply Chain Checks
-
-```powershell
-.\scripts\supply_chain_checks.ps1
-```
-
-The script writes generated reports under `reports/`, which is ignored by Git.
+Tests do not call real LLMs, real Codex, OpenHands, paid services, or
+user-provided untrusted code. Codex Worker tests use only `MockCodexClient`,
+`DryRunCodexClient`, and NOT_CONFIGURED `LocalCodexCliClient` behavior.

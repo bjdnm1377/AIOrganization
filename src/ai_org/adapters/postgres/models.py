@@ -76,6 +76,7 @@ class TaskRow(Base):
     risk_level: Mapped[str] = mapped_column(String(16), nullable=False)
     dependencies: Mapped[list[str]] = mapped_column(JSON, nullable=False)
     acceptance_criteria: Mapped[list[str]] = mapped_column(JSON, nullable=False)
+    task_metadata: Mapped[dict[str, Any]] = mapped_column("metadata", JSON, nullable=False)
     attempt_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     max_attempts: Mapped[int] = mapped_column(Integer, nullable=False, default=2)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), nullable=False)

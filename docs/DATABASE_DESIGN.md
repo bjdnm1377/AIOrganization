@@ -1,17 +1,19 @@
-﻿# Database Design
+# Database Design
 
 ## Schemas
 
 - `ai_org`: business tables.
-- `langgraph_checkpoint`: planned LangGraph checkpoint tables.
+- `langgraph_checkpoint`: LangGraph checkpoint tables.
 
 Separate schemas keep business state logically separate from checkpoint recovery
-state. The local default API uses an in-memory repository; PostgreSQL repository
-code and Alembic migration files are present for integration environments.
+state.
+
+## Migrations
+
+- `alembic/versions/0001_initial_business_schema.py`
+- `alembic/versions/0002_add_task_metadata.py`
 
 ## Business Tables
-
-Migration: `alembic/versions/0001_initial_business_schema.py`
 
 - `ai_org.projects`
 - `ai_org.tasks`
@@ -19,39 +21,36 @@ Migration: `alembic/versions/0001_initial_business_schema.py`
 - `ai_org.approvals`
 - `ai_org.audit_events`
 
-## Key Columns
+`tasks.metadata` stores structured execution constraints, including Codex
+allowed files, forbidden files, allowed commands, required tests, and
+Mock/DryRun options. Large diffs and logs are not stored directly in business
+JSON fields; they are stored as artifact files with metadata persisted through
+`WorkerRun.structured_output`.
+
+## Concurrency And Idempotency
 
 All mutable business entities include `version` for optimistic locking. Updates
-filter by the expected version and raise a conflict if no row is updated.
+filter by expected version and raise a conflict if no row is updated.
 
 `worker_runs.idempotency_key` is unique. `approvals.idempotency_key` is unique
 when present. `projects.idempotency_key` is unique when present.
 
 ## Transactions
 
-`PostgresUnitOfWork` owns a SQLAlchemy session and commits on successful context
-exit or rolls back on exceptions. The FastAPI PostgreSQL container also wires
-session `commit` and `rollback` hooks into `ProjectApplicationService`, so each
-mutating service operation has an explicit transaction boundary.
-
-The in-memory default keeps no-op transaction hooks for deterministic local
-tests.
+PostgreSQL mode wires SQLAlchemy `commit` and `rollback` hooks into
+`ProjectApplicationService`, so mutating service operations have explicit
+transaction boundaries. The default in-memory repository keeps no-op hooks for
+deterministic local tests.
 
 ## Checkpoint Tables
 
-LangGraph checkpoint access is handled by `postgres_checkpointer()` in
-`src/ai_org/orchestration/postgres_checkpoint.py`. Runtime access uses the
-`langgraph_checkpoint` schema with the strict serializer. `setup=True` must be
-passed only during initialization or tests because it may execute checkpoint DDL.
-Runtime roles should use already-created checkpoint tables.
-
-Live checkpoint PostgreSQL recovery could not be executed on this host because
-Docker is not installed; the Docker-gated test executes it when Docker is
-available.
+`postgres_checkpointer()` in `src/ai_org/orchestration/postgres_checkpoint.py`
+uses the `langgraph_checkpoint` schema with the strict serializer. `setup=True`
+must be used only during initialization or tests because it may execute
+checkpoint DDL.
 
 ## Retention
 
 Business audit events are append-only. Checkpoint retention should be shorter
 than business audit retention and can be cleaned after terminal project states
-once recovery is no longer required. The cleanup job is documented but not yet
-implemented in this stage.
+once recovery is no longer required. Automatic cleanup is not implemented yet.

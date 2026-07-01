@@ -50,6 +50,7 @@ class TaskResponse(StrictModel):
     risk_level: RiskLevel
     dependencies: list[str]
     acceptance_criteria: list[str]
+    metadata: dict[str, Any] = Field(default_factory=dict)
     attempt_count: int
     max_attempts: int
     created_at: datetime

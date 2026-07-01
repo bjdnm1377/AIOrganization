@@ -1,7 +1,8 @@
 ﻿# AI Organization Agent Guide
 
 This repository implements a two-layer AI organization system. The current
-stage is the first runnable skeleton with a minimal persistent workflow.
+stage includes the minimal persistent workflow plus Mock/DryRun Codex Coding
+Worker isolation.
 
 ## Current Boundaries
 
@@ -18,9 +19,11 @@ stage is the first runnable skeleton with a minimal persistent workflow.
 - `domain` must not import LangGraph, FastAPI, SQLAlchemy, or Alembic types.
 - `application` owns use cases and transaction-oriented coordination.
 - `orchestration` owns LangGraph adapter code and workflow nodes.
-- `ports` defines Worker and Repository interfaces.
+- `ports` defines Worker, Repository, and CodexClient interfaces.
 - `adapters` contains concrete implementations such as in-memory storage,
-  PostgreSQL mapping, FastAPI, Mock Workers, and Codex dry-run stubs.
+  PostgreSQL mapping, FastAPI, Mock Workers, and Codex Mock/DryRun adapters.
+- Codex Worker changes must stay inside task-scoped Git worktrees and must not
+  merge into the main branch automatically.
 - Workers must return structured results, not free text as the only output.
 - Review Workers must stay independent from the worker that produced the result.
 

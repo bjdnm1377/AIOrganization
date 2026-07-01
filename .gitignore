@@ -13,6 +13,8 @@ build/
 .env.*
 !.env.example
 reports/
+.ai_org_artifacts/
+.ai_org_worktrees/
 sbom.json
 pip-audit-report.json
 license-report.json
