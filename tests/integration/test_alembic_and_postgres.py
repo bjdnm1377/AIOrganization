@@ -106,9 +106,10 @@ def test_postgresql_migrations_and_checkpoint_recovery() -> None:
             session.commit()
 
             approvals = repo.list_approvals(project.project_id)
+            task = repo.list_tasks(project.project_id)[0]
             assert first_status.project.status == ProjectStatus.WAITING_APPROVAL
             assert len(approvals) == 1
-            assert len(repo.list_worker_runs()) == 0
+            assert len(repo.list_worker_runs(task.task_id)) == 0
 
             approval_id = approvals[0].approval_id
             session.close()
