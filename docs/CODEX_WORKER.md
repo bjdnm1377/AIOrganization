@@ -17,6 +17,14 @@ Implemented clients:
 No default code path requires an OpenAI key, Codex login, paid service, or real
 shell execution. CI uses only Mock/DryRun and NOT_CONFIGURED behavior.
 
+## Optional Sandbox Hook
+
+`CodexWorker` can receive a `SandboxRunner` implementation. It only invokes the
+sandbox when task metadata contains `sandbox_smoke=True`; the command is a fixed
+health check and is recorded as `sandbox.health`. This hook verifies integration
+with the sandbox foundation without executing user-provided commands or calling
+real Codex inside Docker.
+
 ## Local Real Codex CLI Smoke Path
 
 The real path is deliberately narrow:
@@ -69,5 +77,5 @@ worktree URIs, not local file paths or artifact contents.
 
 - Codex MCP execution.
 - Automatic merge to the main branch.
-- Docker code-execution sandbox.
+- Running real Codex or arbitrary user commands inside Docker.
 - OpenHands or other external agent runtime.

@@ -2,9 +2,10 @@
 
 AI Organization is a two-layer AI organization skeleton. It implements a minimal
 end-to-end workflow with deterministic Mock Workers, a Mock/DryRun Codex Coding
-Worker adapter, an explicitly opt-in local Codex CLI smoke path, review,
-approvals, audit events, FastAPI query endpoints, PostgreSQL mappings, Alembic
-migrations, and strict LangGraph checkpoint serialization checks.
+Worker adapter, an explicitly opt-in local Codex CLI smoke path, a Docker
+sandbox foundation for fixed safe command tests, review, approvals, audit
+events, FastAPI query endpoints, PostgreSQL mappings, Alembic migrations, and
+strict LangGraph checkpoint serialization checks.
 
 Default tests and CI do not call real LLMs, real Codex, OpenHands, Virtuoso,
 HFSS, MATLAB, Redis, Temporal, or user-provided untrusted code. Real Codex CLI
@@ -59,6 +60,15 @@ The real smoke path uses `codex --sandbox workspace-write --ask-for-approval
 on-request exec --json --cd <worktree> --color never -`, runs only inside a
 task-scoped Git worktree, records logical artifact URIs, and does not commit,
 merge, or modify the main branch.
+
+## Docker Sandbox Foundation
+
+The repository includes `SandboxRunner` ports plus Mock and Docker adapters for
+future Coding Worker command execution. Docker sandbox tests run fixed safe
+commands only; they do not execute user-provided code and do not call real
+Codex. The Docker runner defaults to a non-root user, `--cap-drop ALL`,
+`no-new-privileges`, read-only root filesystem, explicit tmpfs, task-worktree
+mount only, disabled network, and CPU/memory/PID/time/output limits.
 
 ## PostgreSQL
 

@@ -10,8 +10,14 @@ from ai_org.adapters.codex.logs import CommandLogCollector
 from ai_org.adapters.codex.policy import CodingWorkerPolicy
 from ai_org.adapters.codex.prompt import CodingTaskPromptRenderer
 from ai_org.adapters.codex.worktree import WorktreeService
-from ai_org.domain.enums import WorkerType
-from ai_org.ports.codex import CodexClient, CodexTaskRequest
+from ai_org.domain.enums import AgentResultStatus, WorkerType
+from ai_org.ports.codex import CodexClient, CodexTaskRequest, CodexTaskResult, CommandLogEntry
+from ai_org.ports.sandbox import (
+    SandboxCommandResult,
+    SandboxCommandSpec,
+    SandboxCommandStatus,
+    SandboxRunner,
+)
 from ai_org.ports.workers import Worker, WorkerRequest
 from ai_org.protocols.schemas import AgentResult, Artifact
 
@@ -25,10 +31,12 @@ class CodexWorker(Worker):
         client: CodexClient | None = None,
         artifact_root: str | Path | None = None,
         worktree_root: str | Path | None = None,
+        sandbox_runner: SandboxRunner | None = None,
     ) -> None:
         root = Path(repo_root).resolve()
         self.worktree_service = WorktreeService(root, worktree_root=worktree_root)
         self.client = client or DryRunCodexClient()
+        self.sandbox_runner = sandbox_runner
         self.artifact_root = Path(artifact_root or root / ".ai_org_artifacts").resolve()
         self.diff_collector = DiffCollector(self.artifact_root)
         self.log_collector = CommandLogCollector(self.artifact_root)
@@ -54,20 +62,58 @@ class CodexWorker(Worker):
         context = self.worktree_service.create_worktree(request.task, request.attempt_number)
         prompt = self.prompt_renderer.render(request.task, policy, request.attempt_number)
         prompt_path = self._write_prompt(request.task.task_id, request.attempt_number, prompt)
-        client = self._client_for_policy(policy)
-        task_result = client.start_task(
-            CodexTaskRequest(
-                task=request.task,
-                attempt_number=request.attempt_number,
-                worktree_path=context.worktree_path,
-                prompt=prompt,
+        sandbox_result = self._run_sandbox_smoke_if_requested(request, context.worktree_path)
+        if sandbox_result is not None and sandbox_result.status != SandboxCommandStatus.SUCCEEDED:
+            task_result = CodexTaskResult(
+                status=AgentResultStatus.FAILED,
+                summary="Sandbox preflight blocked the coding task.",
+                evidence=["Coding task was not dispatched because sandbox preflight failed."],
+                command_logs=[_sandbox_command_log(sandbox_result, _worktree_uri(request))],
+                risks=["Sandbox preflight must pass before future code execution."],
+                metadata={
+                    "codex_mode": policy.mode,
+                    "sandbox_enabled": True,
+                    "sandbox_status": sandbox_result.status.value,
+                    "sandbox_error": sandbox_result.error,
+                    "blocked_reason": "SANDBOX_PREFLIGHT_FAILED",
+                },
             )
-        )
+        else:
+            sandbox_logs = (
+                [_sandbox_command_log(sandbox_result, _worktree_uri(request))]
+                if sandbox_result is not None
+                else []
+            )
+            sandbox_metadata = (
+                {
+                    "sandbox_enabled": True,
+                    "sandbox_status": sandbox_result.status.value,
+                    "sandbox_image": sandbox_result.image,
+                    "sandbox_network_enabled": sandbox_result.network_enabled,
+                }
+                if sandbox_result is not None
+                else {"sandbox_enabled": False}
+            )
+            client = self._client_for_policy(policy)
+            task_result = client.start_task(
+                CodexTaskRequest(
+                    task=request.task,
+                    attempt_number=request.attempt_number,
+                    worktree_path=context.worktree_path,
+                    prompt=prompt,
+                )
+            )
+            task_result = replace(
+                task_result,
+                command_logs=[*sandbox_logs, *task_result.command_logs],
+                metadata={**task_result.metadata, **sandbox_metadata},
+            )
         commands = [
             entry.command
             for entry in task_result.command_logs
             if entry.status not in {"skipped", "not_configured"}
             and not entry.command.startswith("mock.")
+            and not entry.command.startswith("sandbox.")
         ]
         command_violations = set(policy.command_violations(commands))
         logical_worktree = _worktree_uri(request)
@@ -162,6 +208,21 @@ class CodexWorker(Worker):
             return DryRunCodexClient()
         return self.client
 
+    def _run_sandbox_smoke_if_requested(
+        self, request: WorkerRequest, worktree_path: Path
+    ) -> SandboxCommandResult | None:
+        if self.sandbox_runner is None:
+            return None
+        if request.task.metadata.get("sandbox_smoke") is not True:
+            return None
+        return self.sandbox_runner.run(
+            SandboxCommandSpec(
+                command=("python", "-c", "print('ai-org-sandbox-ok')"),
+                worktree_path=worktree_path,
+                purpose="codex-worker-sandbox-smoke",
+            )
+        )
+
     def _write_prompt(self, task_id: str, attempt_number: int, prompt: str) -> Path:
         directory = self.artifact_root / task_id / f"attempt-{attempt_number}"
         directory.mkdir(parents=True, exist_ok=True)
@@ -186,3 +247,19 @@ def _sha256(value: str) -> str:
 
 def _worktree_uri(request: WorkerRequest) -> str:
     return f"worktree://codex/{request.task.task_id}/attempt-{request.attempt_number}"
+
+
+def _sandbox_command_log(result: SandboxCommandResult, logical_cwd: str) -> CommandLogEntry:
+    return CommandLogEntry(
+        command="sandbox.health",
+        status=result.status.value,
+        exit_code=result.exit_code,
+        cwd=logical_cwd,
+        stdout_summary=result.stdout_summary,
+        stderr_summary=result.stderr_summary,
+        duration_ms=result.duration_ms,
+        timed_out=result.timed_out,
+        network_requested=result.network_enabled,
+        allowed=result.status == SandboxCommandStatus.SUCCEEDED,
+        approval_required=False,
+    )

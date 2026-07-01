@@ -17,6 +17,8 @@
   failure behavior.
 - Worktree creation, path traversal defense, and symlink-boundary defense.
 - Coding Worker diff, artifact, command-log, review, rework, and idempotency.
+- Sandbox policy, MockSandboxRunner, DockerSandboxRunner, and optional
+  CodexWorker sandbox hook behavior.
 - Manual real Codex CLI smoke test, skipped by default.
 
 ## Local Commands
@@ -62,6 +64,18 @@ Tests marked `postgres` run in two modes:
 If Docker is unavailable locally, PostgreSQL tests skip with a clear reason.
 CI uses `postgres:16.6`.
 
+## Docker Sandbox Integration
+
+Docker sandbox integration tests run fixed safe commands and do not execute
+user-provided code:
+
+```powershell
+.\.venv\Scripts\python -m pytest tests\integration\test_docker_sandbox.py -q
+```
+
+If Docker is unavailable locally, these tests skip with an explicit message. In
+GitHub Actions, Docker unavailability fails the Docker sandbox integration step.
+
 ## CI Verification
 
 `.github/workflows/verification.yml` uses Python 3.12 and runs:
@@ -81,6 +95,7 @@ python -m pytest \
   tests/integration/test_codex_worker_workflow.py \
   tests/e2e/test_api.py \
   -q
+python -m pytest tests/integration/test_docker_sandbox.py -q
 python -m pytest -q
 ```
 

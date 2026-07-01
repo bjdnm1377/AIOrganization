@@ -46,6 +46,24 @@ The real CLI invocation uses `workspace-write` sandbox and `on-request`
 approval. `danger-full-access`, sandbox bypass flags, automatic commits,
 automatic merges, and unrestricted file scope are not used.
 
+## Docker Sandbox Foundation
+
+The sandbox layer is implemented behind a `SandboxRunner` port. Default tests can
+use `MockSandboxRunner`; Docker integration tests use `DockerSandboxRunner` with
+fixed safe commands only.
+
+`DockerSandboxRunner` rejects privileged mode, root users, enabled network,
+missing `cap-drop=ALL`, missing `no-new-privileges`, writable root filesystems,
+secret-like environment keys, host mounts outside the task worktree, and dotenv,
+SSH, Git, or cloud credential mounts. The runner uses `--network none`, a
+read-only root filesystem, explicit `/tmp` tmpfs, non-root user
+`65532:65532`, and CPU, memory, PID, timeout, stdout, and stderr limits.
+
+`CodexWorker` can optionally run a sandbox smoke hook when
+`sandbox_smoke=True`; it records a `sandbox.health` command log. This does not
+execute task-provided shell commands and does not move real Codex execution into
+Docker yet.
+
 ## Review Gate
 
 The independent `MockReviewWorker` rejects Codex results with policy violations,
@@ -59,6 +77,7 @@ workflow blocks the task/project.
   and can consume real Codex service capacity when manually enabled.
 - The smoke test does not expose every failure mode of a production Coding
   Worker.
-- A production sandbox is not implemented.
+- The Docker sandbox foundation is not a production-grade arbitrary-code
+  execution environment.
 - Policy is intentionally simple and deterministic; a stronger permission model
   is required before real untrusted code execution.

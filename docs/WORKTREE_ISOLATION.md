@@ -19,6 +19,9 @@ Safety controls:
 - No automatic merge is performed.
 - API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
   URIs instead of local absolute paths.
+- Docker sandbox integration mounts only the task worktree at `/workspace`; it
+  does not mount the main repository, user home, SSH agent, Git credentials,
+  cloud credentials, `.env` files, or the Docker socket.
 
 ## Real Codex Smoke Scope
 

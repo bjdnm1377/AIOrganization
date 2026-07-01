@@ -7,6 +7,7 @@
 - Worker outputs and artifact metadata.
 - Codex task worktrees, diff artifacts, prompt artifacts, and command-log
   artifacts.
+- Docker sandbox command logs and task worktree mounts.
 - Dependency lock file and migration files.
 
 ## Trust Boundaries
@@ -15,6 +16,7 @@
 - Application service and domain state transition boundary.
 - WorkerRegistry and Worker adapter boundary.
 - CodexClient and worktree boundary.
+- SandboxRunner and container boundary.
 - PostgreSQL business schema boundary.
 - LangGraph checkpoint schema boundary.
 
@@ -42,12 +44,20 @@
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.
+- `SandboxRunner` isolates future command execution behind a port.
+- `DockerSandboxRunner` defaults to non-root, disabled network, `cap-drop=ALL`,
+  `no-new-privileges`, read-only root filesystem, explicit tmpfs, task worktree
+  mount only, and CPU, memory, PID, timeout, stdout, and stderr limits.
+- Sandbox policy rejects privileged containers, enabled network, root users,
+  missing capability drops, writable root filesystems, secret-like environment
+  keys, host mounts outside the task worktree, and dotenv or credential mounts.
 - Default tests do not call real shell, real Codex, real LLM, or untrusted code.
 
 ## Known Risks
 
 - Real Codex runtime is implemented only for a controlled local smoke test.
-- Production sandboxing is not implemented.
+- Docker sandboxing is implemented only as a foundation with fixed safe command
+  tests; production arbitrary-code execution is not implemented.
 - Worktree cleanup is manual in this stage.
 - Role-level PostgreSQL grants are documented but not provisioned locally.
 - Checkpoint cleanup is documented but not implemented.
@@ -55,7 +65,8 @@
 
 ## Future Controls
 
-- Docker or equivalent execution sandbox design before untrusted code execution.
+- Network approval and egress policy before sandbox network access.
+- Production image pinning/scanning before arbitrary code execution.
 - Stronger permission and budget domain model.
 - Separate database roles for application, checkpoint, and migration.
 - Artifact retention and cleanup policy.
