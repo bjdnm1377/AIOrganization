@@ -4,15 +4,17 @@ Date: 2026-07-01
 
 Stage: First runnable skeleton and minimal persistent workflow
 
-Status: IMPLEMENTATION COMPLETE / CI VERIFICATION PENDING
+Status: IMPLEMENTATION COMPLETE / CI PUSH BLOCKED
 
 Superseded status note: the follow-up CI verification stage is recorded in
-`FINAL_VERIFICATION_REPORT.md` and `CI_PENDING_REPORT.md`.
+`FINAL_VERIFICATION_REPORT.md`, `CI_PENDING_REPORT.md`, and
+`CI_BLOCKED_REPORT.md`.
 
 The project must not enter the Codex Coding Worker isolation stage yet. The
 workflow `.github/workflows/verification.yml` is ready to run Python 3.12,
 PostgreSQL service integration, Alembic migration, checkpoint recovery, tests,
-and supply-chain scans, but a real CI run has not yet been observed passing.
+and supply-chain scans, but the repository currently has no GitHub remote or
+push authorization, so a real CI run has not yet been triggered or observed.
 
 ## 1. Stage Goal
 

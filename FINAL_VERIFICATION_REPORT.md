@@ -6,6 +6,10 @@ Stage: CI environment validation and version-baseline self-repair
 
 Status: CI WORKFLOW READY / WAITING FOR CI RUN
 
+Current follow-up note: the workflow remains ready, but the real CI run stage is
+blocked because no GitHub remote or push authorization is configured. See
+`CI_BLOCKED_REPORT.md` for the latest status.
+
 ## 1. Stage Goal
 
 This phase addresses the environment baseline blockers recorded in the previous
