@@ -6,6 +6,10 @@ Stage: Real CI run and result acceptance
 
 Status: BLOCKED - GITHUB REMOTE OR PUSH AUTH REQUIRED
 
+Superseded follow-up note: the GitHub remote was later configured, push
+succeeded, and real CI passed. See `FINAL_CI_VERIFICATION_REPORT.md` for the
+latest auditable status.
+
 ## 1. Stage Goal
 
 Push `.github/workflows/verification.yml` to GitHub, trigger a real GitHub

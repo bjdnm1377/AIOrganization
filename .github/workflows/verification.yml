@@ -162,8 +162,9 @@ jobs:
           mkdir -p reports
           python -m detect_secrets scan -n src tests docs alembic .github \
             README.md AGENTS.md ACCEPTANCE_REPORT.md FINAL_VERIFICATION_REPORT.md \
-            CI_PENDING_REPORT.md CI_BLOCKED_REPORT.md pyproject.toml requirements.in \
-            requirements-lock.txt docker-compose.yml alembic.ini .editorconfig .gitignore \
+            FINAL_CI_VERIFICATION_REPORT.md CI_PENDING_REPORT.md CI_BLOCKED_REPORT.md \
+            pyproject.toml requirements.in requirements-lock.txt docker-compose.yml \
+            alembic.ini .editorconfig .gitignore \
             --exclude-files "(?i)(__pycache__|\\.pyc$|\\.egg-info|^reports|^\\.venv|^\\.git)" \
             > reports/detect-secrets-report.json
           python - <<'PY'

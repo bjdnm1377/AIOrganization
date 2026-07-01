@@ -23,6 +23,7 @@ $paths = @(
     "AGENTS.md",
     "ACCEPTANCE_REPORT.md",
     "FINAL_VERIFICATION_REPORT.md",
+    "FINAL_CI_VERIFICATION_REPORT.md",
     "CI_PENDING_REPORT.md",
     "CI_BLOCKED_REPORT.md",
     "pyproject.toml",
