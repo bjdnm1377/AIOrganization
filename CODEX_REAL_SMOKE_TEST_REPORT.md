@@ -1,6 +1,6 @@
 # Controlled Real Codex Smoke Test Report
 
-Status: BLOCKED - GITHUB PUSH NETWORK UNAVAILABLE
+Status: VERIFIED COMPLETE FOR CONTROLLED REAL CODEX SMOKE TEST
 
 ## 1. Stage Goal
 
@@ -12,8 +12,7 @@ and artifact query boundaries.
 ## 2. Current Status
 
 Local controlled real Codex smoke test passed. GitHub Actions verification for
-the new implementation commit has not started because the local environment
-cannot currently connect to `github.com:443` for Git push.
+the implementation commit completed successfully on the remote `master` branch.
 
 ## 3. Codex CLI Detection
 
@@ -159,7 +158,7 @@ Supply-chain summary:
 
 ## 12. CI Status
 
-Previous accepted baseline before this stage:
+Previous accepted Mock/DryRun baseline before this stage:
 
 - Run id: `28535221021`
 - Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535221021`
@@ -167,20 +166,32 @@ Previous accepted baseline before this stage:
 - Commit: `77c4a85b80ddcd71144af55ca30823bc2a06ff5d`
 - Conclusion: `success`
 
-New CI for this stage: not triggered yet.
+Verified by real GitHub Actions for this stage:
 
-Push attempts:
+- Workflow: `Verification`
+- Run id: `28539743385`
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28539743385`
+- Job id: `84610195876`
+- Job URL:
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28539743385/job/84610195876`
+- Branch: `master`
+- Commit: `d0c3a3b5a282a2b7bbf6ee41e8c5b1bb3b177bb2`
+- Trigger: `push`
+- Runner: GitHub-hosted Ubuntu runner
+- PostgreSQL image: `postgres:16.6`
+- Started: `2026-07-01T18:40:17Z`
+- Completed: `2026-07-01T18:42:01Z`
+- Conclusion: `success`
+- Job steps: `28`
+- Failed steps: `0`
 
-- `git push origin master`: failed, `Failed to connect to github.com port 443`
-- `git ls-remote origin HEAD`: failed with the same Git endpoint connectivity
-  error
-- `Test-NetConnection github.com -Port 443`: latest result
-  `TcpTestSucceeded=False`
-- `curl https://api.github.com/repos/bjdnm1377/AIOrganization`: succeeded,
-  confirming that GitHub API reachability is separate from the blocked Git/Web
-  endpoint in this environment
-
-The local commit is ready to push when `github.com:443` becomes reachable.
+Successful CI steps included Python 3.12 setup, requirements-lock validation,
+ruff format/check, mypy, Alembic migration against PostgreSQL, PostgreSQL
+repository/checkpoint recovery tests, workflow scenarios A-E, FastAPI e2e,
+checkpoint security tests, Codex Coding Worker isolation tests, full pytest,
+pip-audit, license report, SBOM generation, detect-secrets, and git whitespace
+check. CI did not enable `AI_ORG_ENABLE_REAL_CODEX_SMOKE` and did not call real
+Codex.
 
 ## 13. Reviewer Findings
 
@@ -225,17 +236,18 @@ All P1 and P2 findings were fixed before commit. P3 was also fixed.
 
 ## 16. Next Stage Recommendation
 
-Proceed to Docker sandbox and real code execution hardening only after this
-stage's CI passes and the user accepts the controlled smoke result.
+Proceed to Docker sandbox and real code execution hardening. The stage B work
+must still avoid real Codex in CI, avoid untrusted user code, and treat Docker
+availability as an explicit verification gate.
 
 ## 17. Git State
 
 - Branch before stage commit: `master`
 - Current pre-stage commit: `77c4a85b80ddcd71144af55ca30823bc2a06ff5d`
-- Final local stage commit before blocked-report amend:
-  `646cb71a1010b81bf5803e066785ec99fafe80fe`
-- Final blocked-report commit: recorded in the final response because embedding
-  a commit's own hash changes that hash.
+- Verified implementation commit:
+  `d0c3a3b5a282a2b7bbf6ee41e8c5b1bb3b177bb2`
+- Final report commit: recorded in the final response because embedding a
+  commit's own hash changes that hash.
 - `git status --short`: pending final local status capture
 
 ## 18. User Acceptance Options
