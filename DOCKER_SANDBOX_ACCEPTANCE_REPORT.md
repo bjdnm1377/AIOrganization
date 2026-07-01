@@ -1,6 +1,6 @@
 # Docker Sandbox Acceptance Report
 
-Status: PENDING FINAL CI VERIFICATION
+Status: VERIFIED COMPLETE FOR DOCKER SANDBOX FOUNDATION
 
 ## 1. Stage Goal
 
@@ -10,8 +10,8 @@ untrusted code, and without automatic merge.
 
 ## 2. Current Status
 
-Implementation and local Docker verification are complete. Final GitHub Actions
-verification is pending for the stage commit.
+Implementation, local Docker verification, independent review, and real GitHub
+Actions verification are complete for the stage implementation commit.
 
 ## 3. Completed Content
 
@@ -140,7 +140,30 @@ Supply-chain summary:
 
 ## 15. CI Result
 
-Pending for this stage commit.
+Verified by real GitHub Actions for this stage:
+
+- Workflow: `Verification`
+- Run id: `28542894252`
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28542894252`
+- Job id: `84620885491`
+- Job URL:
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28542894252/job/84620885491`
+- Branch: `master`
+- Commit: `6c4fe84e23c1c6ae315d2adf324a58ad8fac2e4e`
+- Trigger: `push`
+- Runner: GitHub-hosted Ubuntu runner
+- PostgreSQL image: `postgres:16.6`
+- Started: `2026-07-01T19:36:37Z`
+- Completed: `2026-07-01T19:38:17Z`
+- Conclusion: `success`
+
+Successful CI steps included Python 3.12 setup, requirements-lock validation,
+ruff format/check, mypy, Alembic migration against PostgreSQL, PostgreSQL
+repository/checkpoint recovery tests, workflow scenarios A-E, FastAPI e2e,
+checkpoint security tests, Codex Coding Worker isolation tests, Docker sandbox
+integration tests, full pytest, pip-audit, license report, SBOM generation,
+detect-secrets, and git whitespace check. CI did not enable
+`AI_ORG_ENABLE_REAL_CODEX_SMOKE` and did not call real Codex.
 
 ## 16. Reviewer Findings And Handling
 
@@ -178,7 +201,10 @@ code modification routed through the sandbox runner for formatter/test commands.
 ## 19. Git State
 
 - Current branch: `master`
-- Current commit hash: pending final commit
+- Verified implementation commit:
+  `6c4fe84e23c1c6ae315d2adf324a58ad8fac2e4e`
+- Final report commit: recorded in the final response because embedding a
+  commit's own hash changes that hash.
 - `git status --short`: pending final capture
 
 ## 20. User Acceptance Options
