@@ -1,6 +1,6 @@
 # Codex Coding Worker Isolation Acceptance Report
 
-Status: PARTIAL - DRY RUN ONLY
+Status: VERIFIED COMPLETE FOR MOCK/DRY-RUN CODEX WORKER
 
 ## 1. Stage Goal
 
@@ -11,9 +11,9 @@ tests must use Mock/DryRun behavior and must not require real Codex credentials.
 
 ## 2. Current Result
 
-Local implementation and local Python 3.13 verification are complete. Real
-GitHub Actions Python 3.12 CI has not yet run for this stage. The status remains
-partial until GitHub Actions verifies this commit.
+Local implementation, local verification, independent review, and real GitHub
+Actions Python 3.12 verification are complete for the Mock/DryRun Codex Worker
+path. Real Codex execution remains intentionally unimplemented.
 
 ## 3. Completed Content
 
@@ -138,13 +138,29 @@ Supply chain local result:
 
 ## 13. CI Result
 
-Not run for this stage. Local commit was created, but push to GitHub is blocked
-by network connectivity from this host:
+Verified by real GitHub Actions:
 
-- `Test-NetConnection github.com -Port 443`: `TcpTestSucceeded=False`
-- `git push origin master`: failed to connect to `github.com` port 443
+- Workflow: `Verification`
+- Run id: `28535023081`
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535023081`
+- Job id: `84594077281`
+- Job URL:
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535023081/job/84594077281`
+- Branch: `master`
+- Commit: `863342e0cdd0e5ccb7bdcca1c6c8638f7f7db0ab`
+- Trigger: `push`
+- Runner: GitHub-hosted Ubuntu runner
+- PostgreSQL image: `postgres:16.6`
+- Started: `2026-07-01T17:15:13Z`
+- Completed: `2026-07-01T17:16:51Z`
+- Conclusion: `success`
 
-No CI success is claimed until the commit is pushed and GitHub Actions completes.
+Successful CI steps included Python 3.12 setup, requirements-lock validation,
+ruff format/check, mypy, Alembic migration against PostgreSQL, PostgreSQL
+repository/checkpoint recovery tests, workflow scenarios A-E, FastAPI e2e,
+checkpoint security tests, Codex Coding Worker isolation tests, full pytest,
+pip-audit, license report, SBOM generation, detect-secrets, and git whitespace
+check.
 
 ## 14. Reviewer Findings
 
@@ -181,9 +197,9 @@ Worker smoke test with explicit opt-in authentication and non-production scope.
 ## 17. Git State
 
 - Branch: `master`
-- Local commit: reported in the final response; embedding it in this amended
-  file would change the commit hash.
-- Push status: blocked by GitHub network connectivity
+- Verified implementation commit:
+  `863342e0cdd0e5ccb7bdcca1c6c8638f7f7db0ab`
+- Final report commit: reported in final response.
 
 ## 18. User Acceptance Options
 
