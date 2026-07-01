@@ -23,13 +23,15 @@ $paths = @(
     "AGENTS.md",
     "ACCEPTANCE_REPORT.md",
     "FINAL_VERIFICATION_REPORT.md",
+    "CI_PENDING_REPORT.md",
     "pyproject.toml",
     "requirements.in",
     "requirements-lock.txt",
     "docker-compose.yml",
     "alembic.ini",
     ".editorconfig",
-    ".gitignore"
+    ".gitignore",
+    ".github"
 )
 
 $output = & $Python -m detect_secrets scan -n @paths `

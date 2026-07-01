@@ -28,14 +28,41 @@
 
 ## PostgreSQL Integration
 
-Tests marked `postgres` and `docker` require Docker. If Docker is unavailable,
-they skip with a clear reason. This is intentional and must be recorded as a
-partial environment limitation in acceptance reports.
+Tests marked `postgres` require a real PostgreSQL database. They can run in two
+modes:
 
-When Docker is available, the PostgreSQL integration test starts Docker Compose,
-runs Alembic, interrupts at approval, closes the business session, recreates the
-repository/service/workflow, resumes from PostgreSQL checkpoint, and verifies the
-worker executes once.
+- GitHub Actions service mode: set `AI_ORG_USE_EXISTING_POSTGRES=true`,
+  `AI_ORG_DATABASE_URL`, and `AI_ORG_CHECKPOINT_DATABASE_URL`. This is the
+  preferred CI path.
+- Local Docker Compose mode: if `AI_ORG_USE_EXISTING_POSTGRES` is not set, the
+  test attempts to start `docker-compose.yml`. If Docker is unavailable, it
+  skips with a clear reason.
+
+The PostgreSQL integration test runs Alembic, interrupts at approval, closes the
+business session, recreates the repository/service/workflow, resumes from
+PostgreSQL checkpoint, and verifies worker-run counts. A local skip must be
+recorded as an environment limitation in acceptance reports.
+
+## CI Verification
+
+The GitHub Actions workflow is `.github/workflows/verification.yml`. It uses
+Python 3.12 and a `postgres:16.6` service container, then runs:
+
+```bash
+python -m ruff format --check .
+python -m ruff check .
+python -m mypy src tests
+python -m alembic upgrade head
+python -m pytest tests/integration/test_alembic_and_postgres.py -q
+python -m pytest tests/integration/test_workflow_scenarios.py -q
+python -m pytest tests/e2e/test_api.py -q
+python -m pytest tests/unit/test_checkpoint_security.py -q
+python -m pytest -q
+```
+
+The workflow also verifies `requirements-lock.txt`, runs `pip-audit`, generates
+a license report and CycloneDX SBOM, runs `detect-secrets`, and runs
+`git diff --check`.
 
 ## External Services
 

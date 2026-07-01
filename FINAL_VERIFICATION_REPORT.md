@@ -1,314 +1,282 @@
-﻿# Final Verification Report - Environment Baseline
+# Final Verification Report - CI Baseline Follow-up
 
 Date: 2026-07-01
 
-Stage: Environment completion and full verification confirmation
+Stage: CI environment validation and version-baseline self-repair
 
-Status: BLOCKED - ENVIRONMENT BASELINE INCOMPLETE
-
-This stage re-checked the previous runnable skeleton and performed every
-verification step available on this host. The project still cannot be marked
-`VERIFIED COMPLETE` because Python 3.12 and Docker are not available on this
-machine. No real LLM, real Codex worker, OpenHands, Virtuoso, HFSS, MATLAB,
-Redis, Temporal, or web frontend was added.
+Status: CI WORKFLOW READY / WAITING FOR CI RUN
 
 ## 1. Stage Goal
 
-Move the previous stage from partial environment verification toward complete
-acceptance by validating:
+This phase addresses the environment baseline blockers recorded in the previous
+verification report. The goal is to provide a CI path for Python 3.12,
+`requirements-lock.txt`, PostgreSQL service integration, Alembic migrations,
+PostgreSQL repository behavior, LangGraph PostgreSQL checkpoint interrupt/resume,
+high-risk approval recovery, linting, typing, tests, secret scanning,
+vulnerability scanning, license reporting, and SBOM generation.
 
-- Python 3.12 baseline and lock generation.
-- Docker/PostgreSQL integration.
-- Alembic migration execution.
-- LangGraph PostgreSQL checkpoint interrupt/resume.
-- High-risk approval resume scenario.
-- Git status, reports, and acceptance documentation.
+This phase did not add business features and did not integrate a real LLM, real
+Codex Worker, OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or web
+frontend.
 
-## 2. Previous Gaps
+## 2. Current Blocked State
 
-The previous `ACCEPTANCE_REPORT.md` listed these gaps:
+The project remains blocked from entering the Codex Coding Worker isolation
+stage.
 
-1. Docker was unavailable, so live PostgreSQL Docker integration was skipped.
-2. PostgreSQL migration/repository/LangGraph checkpoint recovery had not run on
-   the local Docker path.
-3. `requirements-lock.txt` was generated under Python 3.13, not Python 3.12.
-4. The report could not embed the final immutable stage commit hash.
-5. PostgreSQL role provisioning and checkpoint cleanup were documented only.
-6. FastAPI PostgreSQL mode still had a low-risk long-lived SQLAlchemy session
-   limitation.
+Reason:
 
-This phase prioritized gaps 1-4. Gaps 5-6 remain documented future work.
+- The local host still does not have Python 3.12.
+- The local host still does not have Docker.
+- The new GitHub Actions workflow has been created but has not been observed
+  passing in this local session.
 
-## 3. Completed In This Phase
+Required gate:
 
-- Re-read `AGENTS.md`, `ACCEPTANCE_REPORT.md`, and current architecture,
-  database, checkpoint, testing, API, state-machine, protocol, threat model, and
-  local-development docs.
-- Confirmed all previous stage files listed in the report exist.
-- Checked Git branch, latest commit, and clean starting worktree.
-- Checked Python runtime inventory and Python 3.12 availability.
-- Checked Docker and Docker Compose availability.
-- Re-ran format, lint, type checking, full pytest, workflow scenarios, FastAPI
-  e2e tests, Alembic/Docker-gated tests, checkpoint security tests, secret scan,
-  vulnerability scan, license report, SBOM generation, and `git diff --check`.
-- Fixed local test credential strings so secret scan returns 0 findings:
-  - removed hardcoded PostgreSQL password from `alembic.ini`;
-  - switched `docker-compose.yml` local PostgreSQL auth to trust mode;
-  - removed password from Docker-gated test connection URLs;
-  - updated local development docs.
-- Fixed `docs/STATE_MACHINE.md` idempotency-key examples to match the actual
-  implementation.
-- Sanitized PostgreSQL integrity-conflict errors so FastAPI does not receive raw
-  database exception text.
-- Added `tests/unit/test_postgres_repository.py` to verify PostgreSQL repository
-  conflict errors do not expose internal table or constraint names.
-
-## 4. Not Completed
-
-- Python 3.12 verification is not complete because Python 3.12 is not installed.
-- `requirements-lock.txt` was not regenerated under Python 3.12.
-- Docker/PostgreSQL live integration did not run because Docker is not
-  installed.
-- Live Alembic migration against PostgreSQL did not run locally.
-- Live LangGraph PostgreSQL checkpoint interrupt/resume did not run locally.
-- PostgreSQL role provisioning and checkpoint cleanup are still future work.
-- FastAPI PostgreSQL session-per-request hardening is still future work.
-
-## 5. Python And Virtual Environment
-
-Commands:
-
-- `py -0p`
-  - Exit code: 0
-  - Summary: Python 3.14 and Python 3.13 are installed.
-- `py -3.12 --version`
-  - Exit code: 1
-  - Summary: no Python 3.12 runtime installed.
-- `python3.12 --version`
-  - Exit code: 1
-  - Summary: command not found.
-- `.\.venv\Scripts\python --version`
-  - Exit code: 0
-  - Summary: `Python 3.13.13`.
-- `.\.venv\Scripts\python -c "import sys; print(sys.executable)"`
-  - Exit code: 0
-  - Summary: `D:\codexpro\AIleader\.venv\Scripts\python.exe`.
-
-Python 3.12 lock verification: not completed.
-
-Minimum approval request:
-
-- Install Python 3.12 locally, or run the lock generation and verification in a
-  Python 3.12 CI/remote environment.
-
-## 6. requirements-lock.txt
-
-`requirements-lock.txt` was not regenerated in this phase because Python 3.12 is
-not available. The existing lock remains generated from Python 3.13.
-
-This phase did normalize `requirements-lock.txt` to UTF-8 without BOM and LF
-line endings so `git diff --check` passes.
-
-## 7. Docker And Compose
-
-Commands:
-
-- `docker --version`
-  - Exit code: 1
-  - Summary: `docker` command not found.
-- `docker compose version`
-  - Exit code: 1
-  - Summary: `docker` command not found.
-
-Docker/PostgreSQL integration: not locally executed.
-
-Minimum approval request:
-
-- Install Docker Desktop locally, or run the PostgreSQL integration tests in a
-  remote/CI environment with Docker support.
-
-## 8. PostgreSQL Integration
-
-Local result: not executed because Docker is unavailable.
-
-The Docker-gated test still exists:
-
-- `tests/integration/test_alembic_and_postgres.py::test_postgresql_migrations_and_checkpoint_recovery_are_docker_gated`
-
-Current no-Docker behavior:
-
-- Explicit skip with reason from `require_docker`.
-
-## 9. Alembic Migration Result
-
-Command:
-
-- `.\.venv\Scripts\python -m pytest tests\integration\test_alembic_and_postgres.py -q`
-
-Result:
-
-- Exit code: 0
-- Passed: 1
-- Failed: 0
-- Skipped: 1
-- Summary: migration file/schema declaration test passed; live PostgreSQL
-  migration test skipped because Docker is unavailable.
-
-## 10. Checkpoint Interrupt/Resume Result
-
-Checkpoint security command:
-
-- `.\.venv\Scripts\python -m pytest tests\unit\test_checkpoint_security.py -q`
-
-Result:
-
-- Exit code: 0
-- Passed: 5
-- Failed: 0
-- Skipped: 0
-- Summary: strict msgpack configuration, pickle fallback rejection, unsupported
-  deserialization payload rejection, allowed-module configuration, and unsafe
-  state rejection passed.
-
-Workflow interrupt/resume command:
-
-- `.\.venv\Scripts\python -m pytest tests\integration\test_workflow_scenarios.py -q`
-
-Result:
-
-- Exit code: 0
-- Passed: 6
-- Failed: 0
-- Skipped: 0
-- Summary: in-memory LangGraph interrupt/resume scenarios passed.
-
-PostgreSQL checkpoint interrupt/resume:
-
-- Not locally executed because Docker is unavailable.
-
-## 11. Business Scenario Results
-
-Scenario A, low-risk automatic completion:
-
-- Covered by `test_scenario_a_low_risk_auto_completes` and
-  `test_fastapi_low_risk_end_to_end`.
-- Result: passed in current environment.
-
-Scenario B, high-risk approval resume:
-
-- In-memory workflow path covered by
-  `test_scenario_b_high_risk_interrupt_and_resume_with_recreated_workflow`.
-- Result: passed in current environment.
-- PostgreSQL checkpoint path: Docker-gated, skipped locally.
-
-Scenario C, approval rejection:
-
-- Covered by `test_scenario_c_approval_rejection_blocks_without_worker`.
-- Result: passed in current environment.
-
-Scenario D, rework limit:
-
-- Covered by `test_scenario_d_rework_stops_at_max_attempts`.
-- Result: passed in current environment.
-
-Scenario E, idempotency:
-
-- Covered by `test_scenario_e_repeated_run_is_idempotent`,
-  `test_existing_running_worker_run_is_not_executed_again`, and FastAPI e2e
+- A real run of `.github/workflows/verification.yml` must pass, or an equivalent
+  remote validation environment must produce auditable results for the same
   checks.
-- Result: passed in current environment.
 
-## 12. Test And Check Commands
+## 3. Actual Changes
 
-| Command | Exit | Passed | Failed | Skipped | Summary |
+- Created `.github/workflows/verification.yml`.
+- Created `docs/CI_VERIFICATION.md`.
+- Created `CI_PENDING_REPORT.md`.
+- Updated `README.md` to make the Python 3.12 verification baseline explicit.
+- Updated PostgreSQL integration test so it can use either a GitHub Actions
+  PostgreSQL service or local Docker Compose.
+- Changed the local Compose PostgreSQL image from `postgres:18.4` to
+  `postgres:16.6` for a conservative fixed CI/local baseline.
+- Updated testing, local-development, and dependency-update docs.
+- Updated the supply-chain script to scan `.github` and the CI pending report.
+
+## 4. Python Baseline
+
+Baseline before this phase:
+
+- Python `3.12.x`
+
+Baseline after this phase:
+
+- Python `3.12.x`
+
+Changed:
+
+- No.
+
+Rationale:
+
+- Python 3.12 remains the intended verification baseline.
+- The local Python 3.13 interpreter is an environment fallback only.
+- There is no evidence that LangGraph, FastAPI, Pydantic, SQLAlchemy, Alembic,
+  psycopg, or the scan tools require raising the baseline.
+
+Local interpreter used for local-only checks:
+
+- Python `3.13.13`
+
+This is not represented as Python 3.12 verification.
+
+## 5. requirements-lock.txt
+
+Regenerated:
+
+- No.
+
+Reason:
+
+- The local host lacks Python 3.12. Regenerating the baseline lock from Python
+  3.13 would not close the baseline gap.
+
+CI verification:
+
+- Install from `requirements-lock.txt`.
+- Install the local package with `pip install -e .`.
+- Run `pip check`.
+- Compare pinned package versions in `requirements-lock.txt` against installed
+  distributions under Python 3.12.
+
+If CI fails this lock check, regenerate `requirements-lock.txt` in a Python 3.12
+environment and commit the lock diff.
+
+## 6. PostgreSQL Service
+
+CI service configuration:
+
+- Image: `postgres:16.6`
+- Database: `ai_org`
+- User: `ai_org_app`
+- Password: CI-only test value, allowlisted for secret scanning
+- Health check: `pg_isready -U ai_org_app -d ai_org`
+- Environment URLs:
+  - `AI_ORG_DATABASE_URL`
+  - `AI_ORG_CHECKPOINT_DATABASE_URL`
+
+Reason for `postgres:16.6`:
+
+- Stable PostgreSQL 16 patch release.
+- Fixed tag, not `latest`.
+- Lower CI risk than starting the baseline on a newer PostgreSQL 18 image before
+  checkpoint recovery is proven.
+
+## 7. Alembic Migration Verification
+
+CI command configured:
+
+```bash
+python -m alembic upgrade head
+```
+
+Local status:
+
+- Not executed against a live PostgreSQL database because Docker is unavailable.
+- Static migration declaration test passed locally.
+
+## 8. PostgreSQL Checkpoint Interrupt/Resume
+
+CI command configured:
+
+```bash
+python -m pytest tests/integration/test_alembic_and_postgres.py -q
+```
+
+The test now supports:
+
+- GitHub Actions service mode with `AI_ORG_USE_EXISTING_POSTGRES=true`.
+- Local Docker Compose fallback when no existing service is configured.
+- Explicit local skip when neither a service nor Docker is available.
+
+The test covers:
+
+- Alembic migration.
+- High-risk task approval interrupt.
+- Approval record persistence.
+- PostgreSQL checkpoint persistence.
+- Repository/service/workflow recreation.
+- Approval resume.
+- Final completion.
+- Worker-run count verification.
+
+Local status:
+
+- `1 passed, 1 skipped`; live PostgreSQL path skipped because Docker is missing.
+
+## 9. Local Test Results
+
+Commands actually run locally in this phase:
+
+| Command | Exit | Passed | Failed | Skipped | Result |
 | --- | ---: | ---: | ---: | ---: | --- |
+| `.\.venv\Scripts\python -m ruff format .` | 0 | n/a | 0 | 0 | 1 file reformatted |
 | `.\.venv\Scripts\python -m ruff format --check .` | 0 | n/a | 0 | 0 | 42 files already formatted |
 | `.\.venv\Scripts\python -m ruff check .` | 0 | n/a | 0 | 0 | All checks passed |
 | `.\.venv\Scripts\python -m mypy src tests` | 0 | n/a | 0 | 0 | No issues in 40 source files |
-| `.\.venv\Scripts\python -m pytest -q` | 0 | 28 | 0 | 1 | Full suite; Docker/PostgreSQL skipped |
-| `.\.venv\Scripts\python -m pytest tests\integration\test_workflow_scenarios.py -q` | 0 | 6 | 0 | 0 | Scenarios A-E and running-run idempotency |
-| `.\.venv\Scripts\python -m pytest tests\e2e\test_api.py -q` | 0 | 3 | 0 | 0 | FastAPI low/high risk and sanitized errors |
-| `.\.venv\Scripts\python -m pytest tests\integration\test_alembic_and_postgres.py -q` | 0 | 1 | 0 | 1 | Alembic static check passed; Docker test skipped |
-| `.\.venv\Scripts\python -m pytest tests\unit\test_checkpoint_security.py -q` | 0 | 5 | 0 | 0 | Strict msgpack and unsafe payload rejection |
-| `.\.venv\Scripts\python -m pytest tests\unit\test_postgres_repository.py -q` | 0 | 1 | 0 | 0 | PostgreSQL integrity errors are sanitized |
-| `git diff --check` | 0 | n/a | 0 | 0 | No whitespace/errors |
+| `.\.venv\Scripts\python -m pytest -q` | 0 | 28 | 0 | 1 | PostgreSQL live path skipped |
+| `.\.venv\Scripts\python -m pytest tests\integration\test_workflow_scenarios.py -q` | 0 | 6 | 0 | 0 | Scenarios A-E and idempotency |
+| `.\.venv\Scripts\python -m pytest tests\e2e\test_api.py -q` | 0 | 3 | 0 | 0 | FastAPI e2e |
+| `.\.venv\Scripts\python -m pytest tests\unit\test_checkpoint_security.py -q` | 0 | 5 | 0 | 0 | Strict msgpack and unsafe payload tests |
+| `.\.venv\Scripts\python -m pytest tests\integration\test_alembic_and_postgres.py -q` | 0 | 1 | 0 | 1 | Live PostgreSQL skipped locally |
+| `.\.venv\Scripts\python -m pytest tests\unit\test_postgres_repository.py -q` | 0 | 1 | 0 | 0 | Sanitized repository conflict |
+| `.\scripts\supply_chain_checks.ps1` | 0 | n/a | 0 | 0 | Local scan suite passed |
+| `git diff --check` | 0 | n/a | 0 | 0 | No whitespace errors |
 
-## 13. Supply Chain And Secret Results
+## 10. CI Commands Configured
 
-Commands:
+The workflow configures:
 
-- `.\.venv\Scripts\python -m pip_audit --format json --output reports\pip-audit-report.json`
-  - Exit code: 0
-  - Dependencies audited: 106
-  - Known vulnerabilities: 0
-  - Skipped: local editable package `ai-organization`
-- `.\.venv\Scripts\pip-licenses --format=json --output-file=reports\license-report.json`
-  - Exit code: 0
-  - License entries: 103
-- `.\.venv\Scripts\python -m cyclonedx_py environment .\.venv --output-format JSON --output-file reports\sbom.json`
-  - Exit code: 0
-  - SBOM components: 107
-- `.\.venv\Scripts\python -m detect_secrets scan ...`
-  - Exit code: 0
-  - Findings: 0
+- Python 3.12 setup.
+- `pip install -r requirements-lock.txt`.
+- `pip install -e .`.
+- `pip check`.
+- lock-file package-version verification.
+- `ruff format --check .`.
+- `ruff check .`.
+- `mypy src tests`.
+- `alembic upgrade head`.
+- PostgreSQL integration and checkpoint recovery tests.
+- Workflow scenario tests.
+- FastAPI e2e tests.
+- Checkpoint security tests.
+- Full pytest.
+- `pip-audit`.
+- `pip-licenses`.
+- CycloneDX SBOM generation.
+- `detect-secrets`.
+- `git diff --check`.
 
-`reports/` is ignored by Git. Generated report artifacts were not committed.
+## 11. Supply Chain And Secret Scan
 
-## 14. Reviewer Findings And Handling
+Local results from `.\scripts\supply_chain_checks.ps1`:
 
-Independent reviewer subagent completed a read-only review.
+- `pip-audit`: exit 0; dependencies audited: 106; known vulnerabilities: 0.
+- `pip-licenses`: exit 0; license entries: 103.
+- CycloneDX SBOM: exit 0; components: 107.
+- `detect-secrets`: exit 0; findings: 0.
 
-High findings:
+Generated reports remain under `reports/`, which is ignored by Git.
 
-- Final report and Git state were not yet committed. Resolution: this report is
-  updated before commit; final assistant response records the post-commit hash
-  and clean `git status --short`.
-- The previously committed `ACCEPTANCE_REPORT.md` still recommended entering the
-  Codex Worker stage. Resolution: `ACCEPTANCE_REPORT.md` now points to this
-  final verification report and explicitly says not to proceed while the
-  environment baseline is incomplete.
+## 12. Security Confirmation
 
-Medium findings:
+Confirmed:
 
-- Docker Compose used trust authentication while exposing port 5432. Resolution:
-  compose now binds PostgreSQL to `127.0.0.1:5432` and requires
-  `AI_ORG_POSTGRES_PASSWORD` instead of trust authentication. Docker-gated tests
-  generate and pass a runtime password through environment variables.
-- PostgreSQL `IntegrityError` details could be exposed through `ConflictError`.
-  Resolution: repository flush now raises a stable `Database integrity conflict`
-  message, and `tests/unit/test_postgres_repository.py` verifies internal table
-  or constraint details are not exposed.
+- No real API keys were added.
+- No real OpenAI key was requested or used.
+- No real Codex Worker was started.
+- No untrusted user code execution path was added.
+- Pickle fallback remains disabled.
+- Checkpoint state constraints were not weakened.
+- CI PostgreSQL credential is a test-only value, not a production secret.
 
-Confirmed by reviewer:
+## 13. Reviewer Findings
 
-- Python 3.12 and Docker gaps were not falsely reported as complete.
-- Checkpoint strict msgpack and disabled pickle fallback remain effective.
-- WorkerRun duplicate execution protection remains in place.
-- No real LLM, Codex, OpenHands, API key, or external paid service was added.
+Independent reviewer status:
 
-## 15. Known Issues
+- Completed read-only review before final commit.
 
-- Python 3.12 is not installed.
-- Docker is not installed.
-- PostgreSQL live integration and checkpoint recovery remain unexecuted locally.
-- PostgreSQL role provisioning is not implemented.
-- Checkpoint cleanup is not implemented.
-- FastAPI PostgreSQL mode still uses a long-lived SQLAlchemy session; later work
-  should move to session-per-request/session-per-workflow.
+High severity:
 
-## 16. Partial Environment Verification
+- None.
 
-Yes. This stage remains blocked by missing environment baseline.
+Medium severity:
 
-Status: BLOCKED - ENVIRONMENT BASELINE INCOMPLETE
+- `FINAL_VERIFICATION_REPORT.md` still listed reviewer status as pending.
+  Resolution: this section now records the completed review result.
+- `ACCEPTANCE_REPORT.md` retained an old acceptance option that could imply
+  immediate entry to the Codex Worker stage. Resolution: the acceptance options
+  now require CI to pass before "Pass" is valid.
 
-## 17. Can The Project Enter The Next Stage?
+Low severity:
 
-No. The project must not enter the Codex Coding Worker isolation execution stage
-until Python 3.12 lock verification and Docker/PostgreSQL integration are
-completed in a suitable environment.
+- GitHub Actions and PostgreSQL image tags are fixed but not pinned by
+  SHA/digest. Resolution: accepted for this phase because the current
+  requirement is fixed versions; digest pinning remains a future supply-chain
+  hardening task.
+- `README.md` could make Python 3.13 look like the verification baseline.
+  Resolution: README now explicitly states that CI/verification baseline remains
+  Python 3.12.
 
-## 18. Git Information
+Reviewer confirmed:
+
+- CI uses Python 3.12.
+- PostgreSQL service is fixed to `postgres:16.6` with a health check and
+  test-only credential.
+- CI config includes Alembic, PostgreSQL checkpoint recovery, scenarios A-E,
+  FastAPI e2e, checkpoint security, linting, typing, pytest, vulnerability
+  scan, license report, SBOM, and secret scan.
+- Reports do not claim CI has passed.
+- No real LLM, real Codex Worker, or next-stage integration was added.
+
+## 14. Known Issues
+
+- CI workflow has not yet been observed passing.
+- Python 3.12 remains unavailable locally.
+- Docker remains unavailable locally.
+- `requirements-lock.txt` remains generated from Python 3.13 until CI or another
+  Python 3.12 environment validates or regenerates it.
+- PostgreSQL role/grant hardening and checkpoint retention jobs remain future
+  work.
+
+## 15. Git Information
 
 Current branch:
 
@@ -316,40 +284,24 @@ Current branch:
 
 Latest committed baseline before this phase:
 
-- `b0ad3f6 feat: add minimal persistent AI workflow skeleton`
+- `b8268bc chore: verify environment baseline constraints`
 
-This report cannot embed the final commit hash of the commit that contains
-itself. The final assistant response records the post-commit hash and clean
-`git status --short` result.
+The final commit hash for this phase cannot be embedded in this file before the
+commit exists. The final assistant response records the immutable post-commit
+hash and post-commit `git status --short`.
 
-## 19. git status --short Before This Phase Commit
+## 16. Can The Project Enter The Next Stage?
 
-```text
- M alembic.ini
- M ACCEPTANCE_REPORT.md
- M docker-compose.yml
- M docs/LOCAL_DEVELOPMENT.md
- M docs/STATE_MACHINE.md
- M scripts/supply_chain_checks.ps1
- M src/ai_org/adapters/postgres/repositories.py
- M tests/integration/test_alembic_and_postgres.py
-?? tests/unit/test_postgres_repository.py
-?? FINAL_VERIFICATION_REPORT.md
-```
+No.
 
-## 20. Next Recommendation
+The allowed user acceptance option for the current state is:
 
-Do not proceed to Codex Coding Worker isolation execution yet.
+- Wait: CI workflow is ready, wait for actual CI run result.
 
-Recommended next action:
+## 17. User Acceptance Options
 
-- Provide Python 3.12 and Docker either locally or in CI/remote environment, then
-  rerun lock generation, live Alembic migration, PostgreSQL repository tests, and
-  PostgreSQL checkpoint interrupt/resume tests.
-
-## 21. User Acceptance Options
-
-- Pass: proceed to Codex Coding Worker isolation execution stage.
-- Reject: revise this environment verification stage according to feedback.
+- Pass: CI has passed, enter Codex Coding Worker isolation stage.
+- Wait: CI workflow is ready, wait for actual CI run result.
+- Reject: continue fixing this CI verification stage.
 - Pause: do not continue for now.
 - Adjust goal: re-plan the next stage.

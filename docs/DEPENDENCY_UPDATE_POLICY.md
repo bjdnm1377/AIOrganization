@@ -181,6 +181,18 @@ The lock file was generated from the local Python 3.13 environment because this
 host does not have Python 3.12 installed. Before production use, regenerate and
 validate the lock file under the selected Python 3.12 baseline.
 
+The CI verification workflow keeps Python 3.12 as the declared baseline and
+installs from `requirements-lock.txt` under Python 3.12. It verifies that every
+pinned distribution in the lock file is installed at the expected version. If
+that workflow fails because the Python 3.13-generated lock is not compatible
+with Python 3.12, regenerate the lock file in a Python 3.12 environment and
+commit the lock diff before acceptance.
+
+GitHub Actions uses `postgres:16.6` for the verification service container. This
+fixed patch tag is the CI baseline for Alembic, PostgreSQL repository, and
+LangGraph checkpoint tests. Production deployments may choose a newer supported
+PostgreSQL release only after the same checkpoint recovery matrix passes.
+
 Direct runtime pins:
 
 - `langgraph==1.2.7`

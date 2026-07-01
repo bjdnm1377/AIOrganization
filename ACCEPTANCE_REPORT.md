@@ -4,19 +4,15 @@ Date: 2026-07-01
 
 Stage: First runnable skeleton and minimal persistent workflow
 
-Status: IMPLEMENTATION COMPLETE / PARTIAL ENVIRONMENT VERIFICATION
+Status: IMPLEMENTATION COMPLETE / CI VERIFICATION PENDING
 
-Superseded status note: the follow-up environment verification stage is recorded
-in `FINAL_VERIFICATION_REPORT.md`. That report currently blocks progression to
-the Codex Coding Worker isolation stage because Python 3.12 and Docker are not
-available in this environment.
+Superseded status note: the follow-up CI verification stage is recorded in
+`FINAL_VERIFICATION_REPORT.md` and `CI_PENDING_REPORT.md`.
 
-The implementation, unit tests, workflow tests, FastAPI tests, lint, type checks,
-secret scan, vulnerability scan, license report, and SBOM generation are complete
-on this host. Docker is not installed on this host, so the live PostgreSQL
-Docker integration test is skipped locally. The Docker-gated test is implemented
-to run the real PostgreSQL migration and checkpoint recovery path when Docker is
-available.
+The project must not enter the Codex Coding Worker isolation stage yet. The
+workflow `.github/workflows/verification.yml` is ready to run Python 3.12,
+PostgreSQL service integration, Alembic migration, checkpoint recovery, tests,
+and supply-chain scans, but a real CI run has not yet been observed passing.
 
 ## 1. Stage Goal
 
@@ -420,7 +416,8 @@ Base commit before this stage:
 
 ## 21. User Acceptance Options
 
-- Pass: proceed to Codex Coding Worker isolation execution stage.
-- Reject: revise this stage according to acceptance feedback.
+- Pass: CI has passed, enter Codex Coding Worker isolation execution stage.
+- Wait: CI workflow is ready, wait for actual CI run result.
+- Reject: continue fixing this CI verification stage.
 - Pause: do not continue for now.
 - Adjust goal: re-plan the next stage.

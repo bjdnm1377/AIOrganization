@@ -17,8 +17,10 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python -m pytest
 ```
 
-Project metadata supports Python `>=3.12,<3.15`. The implementation host only
-had Python 3.13 available, so the local verification run used Python 3.13.
+Project metadata supports Python `>=3.12,<3.15`. The CI and verification
+baseline remains Python 3.12. The implementation host only had Python 3.13
+available, so local-only verification used Python 3.13 and does not replace the
+Python 3.12 CI gate.
 
 ## Run The API
 

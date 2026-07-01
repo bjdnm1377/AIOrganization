@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import os
+import shutil
 import subprocess
 import sys
 import time
 from pathlib import Path
 from uuid import uuid4
 
+import psycopg
 import pytest
 
 from ai_org.adapters.postgres.repositories import SqlAlchemyRepository
@@ -23,8 +25,17 @@ from ai_org.orchestration.workflow import LangGraphWorkflow
 from ai_org.protocols.schemas import ApprovalDecision, CreateProjectRequest, TaskSpec
 
 TEST_DB_PASSWORD = f"test_{uuid4().hex}"
-SQLALCHEMY_URL = f"postgresql+psycopg://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
-PSYCOPG_URL = f"postgresql://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
+DEFAULT_SQLALCHEMY_URL = f"postgresql+psycopg://ai_org_app:{TEST_DB_PASSWORD}@localhost:5432/ai_org"
+SQLALCHEMY_URL = os.environ.get("AI_ORG_DATABASE_URL", DEFAULT_SQLALCHEMY_URL)
+PSYCOPG_URL = os.environ.get(
+    "AI_ORG_CHECKPOINT_DATABASE_URL",
+    SQLALCHEMY_URL.replace("postgresql+psycopg://", "postgresql://", 1),
+)
+USE_EXISTING_POSTGRES = os.environ.get("AI_ORG_USE_EXISTING_POSTGRES", "").lower() in {
+    "1",
+    "true",
+    "yes",
+}
 
 
 def test_alembic_migration_declares_required_tables_and_schemas() -> None:
@@ -42,14 +53,19 @@ def test_alembic_migration_declares_required_tables_and_schemas() -> None:
         assert token in migration
 
 
-@pytest.mark.docker
 @pytest.mark.postgres
-def test_postgresql_migrations_and_checkpoint_recovery_are_docker_gated(
-    require_docker: None,
-) -> None:
-    _compose("up", "-d", "postgres")
+def test_postgresql_migrations_and_checkpoint_recovery() -> None:
+    managed_compose = not USE_EXISTING_POSTGRES
+    if managed_compose:
+        if not _docker_available():
+            pytest.skip("Docker is unavailable and no existing PostgreSQL service was configured")
+        _compose("up", "-d", "postgres")
+
     try:
-        _wait_for_postgres()
+        if managed_compose:
+            _wait_for_compose_postgres()
+        else:
+            _wait_for_database_url(PSYCOPG_URL)
         _run(
             [sys.executable, "-m", "alembic", "upgrade", "head"],
             env={
@@ -123,7 +139,14 @@ def test_postgresql_migrations_and_checkpoint_recovery_are_docker_gated(
             session.close()
             engine.dispose()
     finally:
-        _compose("down", "-v", "--remove-orphans", check=False)
+        if managed_compose:
+            _compose("down", "-v", "--remove-orphans", check=False)
+
+
+def _docker_available() -> bool:
+    if shutil.which("docker") is None:
+        return False
+    return _run(["docker", "compose", "version"], check=False).returncode == 0
 
 
 def _compose(*args: str, check: bool = True) -> subprocess.CompletedProcess[str]:
@@ -158,7 +181,7 @@ def _run(
     return result
 
 
-def _wait_for_postgres() -> None:
+def _wait_for_compose_postgres() -> None:
     deadline = time.monotonic() + 90
     while time.monotonic() < deadline:
         result = _compose(
@@ -176,3 +199,20 @@ def _wait_for_postgres() -> None:
             return
         time.sleep(2)
     pytest.fail("PostgreSQL container did not become ready within 90 seconds")
+
+
+def _wait_for_database_url(url: str) -> None:
+    deadline = time.monotonic() + 90
+    last_error = ""
+    while time.monotonic() < deadline:
+        try:
+            with (
+                psycopg.connect(url, connect_timeout=3) as connection,
+                connection.cursor() as cursor,
+            ):
+                cursor.execute("select 1")
+            return
+        except psycopg.OperationalError as exc:
+            last_error = str(exc)
+            time.sleep(2)
+    pytest.fail(f"PostgreSQL service did not become ready within 90 seconds: {last_error}")

@@ -1,0 +1,188 @@
+name: Verification
+
+on:
+  push:
+    branches:
+      - "**"
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  verify:
+    name: Python 3.12 PostgreSQL verification
+    runs-on: ubuntu-24.04
+    timeout-minutes: 25
+
+    services:
+      postgres:
+        image: postgres:16.6
+        env:
+          POSTGRES_DB: ai_org
+          POSTGRES_USER: ai_org_app
+          POSTGRES_PASSWORD: ai_org_ci_test_password # pragma: allowlist secret
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U ai_org_app -d ai_org"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 20
+
+    env:
+      PYTHONUTF8: "1"
+      AI_ORG_USE_EXISTING_POSTGRES: "true"
+      AI_ORG_POSTGRES_PASSWORD: ai_org_ci_test_password # pragma: allowlist secret
+      AI_ORG_DATABASE_URL: postgresql+psycopg://ai_org_app:ai_org_ci_test_password@localhost:5432/ai_org # pragma: allowlist secret
+      AI_ORG_CHECKPOINT_DATABASE_URL: postgresql://ai_org_app:ai_org_ci_test_password@localhost:5432/ai_org # pragma: allowlist secret
+      AI_ORG_CHECKPOINT_SETUP: "true"
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python baseline
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Show Python baseline
+        run: |
+          python --version
+          python -m pip --version
+
+      - name: Create virtual environment
+        run: python -m venv .venv
+
+      - name: Install locked dependencies
+        run: |
+          source .venv/bin/activate
+          python -m pip install --upgrade pip
+          python -m pip install -r requirements-lock.txt
+          python -m pip install -e .
+          python -m pip check
+
+      - name: Verify requirements lock file
+        run: |
+          source .venv/bin/activate
+          python - <<'PY'
+          from importlib.metadata import distributions
+          from pathlib import Path
+          from packaging.utils import canonicalize_name
+
+          expected = {}
+          for line in Path("requirements-lock.txt").read_text(encoding="utf-8").splitlines():
+              stripped = line.strip()
+              if not stripped or stripped.startswith("#") or "==" not in stripped:
+                  continue
+              name, pinned = stripped.split("==", 1)
+              expected[canonicalize_name(name)] = pinned
+
+          installed = {
+              canonicalize_name(dist.metadata["Name"]): dist.version
+              for dist in distributions()
+              if dist.metadata.get("Name")
+          }
+          mismatches = [
+              f"{name}: expected {pinned}, got {installed.get(name, '<missing>')}"
+              for name, pinned in sorted(expected.items())
+              if installed.get(name) != pinned
+          ]
+          if mismatches:
+              raise SystemExit("\n".join(mismatches))
+          print(f"Verified {len(expected)} pinned distributions from requirements-lock.txt.")
+          PY
+
+      - name: Check formatting
+        run: |
+          source .venv/bin/activate
+          python -m ruff format --check .
+
+      - name: Lint
+        run: |
+          source .venv/bin/activate
+          python -m ruff check .
+
+      - name: Type check
+        run: |
+          source .venv/bin/activate
+          python -m mypy src tests
+
+      - name: Verify Alembic migration against PostgreSQL
+        run: |
+          source .venv/bin/activate
+          python -m alembic upgrade head
+
+      - name: PostgreSQL repository and checkpoint recovery tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/integration/test_alembic_and_postgres.py -q
+
+      - name: Workflow scenario tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/integration/test_workflow_scenarios.py -q
+
+      - name: FastAPI end-to-end tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/e2e/test_api.py -q
+
+      - name: Checkpoint security tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest tests/unit/test_checkpoint_security.py -q
+
+      - name: Full pytest suite
+        run: |
+          source .venv/bin/activate
+          python -m pytest -q
+
+      - name: Vulnerability scan
+        run: |
+          source .venv/bin/activate
+          mkdir -p reports
+          python -m pip_audit --format json --output reports/pip-audit-report.json
+
+      - name: License report
+        run: |
+          source .venv/bin/activate
+          mkdir -p reports
+          pip-licenses --format=json --output-file=reports/license-report.json
+
+      - name: Generate SBOM
+        run: |
+          source .venv/bin/activate
+          mkdir -p reports
+          python -m cyclonedx_py environment .venv --output-format JSON --output-file reports/sbom.json
+
+      - name: Secret scan
+        run: |
+          source .venv/bin/activate
+          mkdir -p reports
+          python -m detect_secrets scan -n src tests docs alembic .github \
+            README.md AGENTS.md ACCEPTANCE_REPORT.md FINAL_VERIFICATION_REPORT.md \
+            CI_PENDING_REPORT.md pyproject.toml requirements.in requirements-lock.txt \
+            docker-compose.yml alembic.ini .editorconfig .gitignore \
+            --exclude-files "(?i)(__pycache__|\\.pyc$|\\.egg-info|^reports|^\\.venv|^\\.git)" \
+            > reports/detect-secrets-report.json
+          python - <<'PY'
+          import json
+          from pathlib import Path
+
+          data = json.loads(Path("reports/detect-secrets-report.json").read_text(encoding="utf-8"))
+          findings = sum(len(items) for items in data.get("results", {}).values())
+          print(f"detect-secrets findings: {findings}")
+          raise SystemExit(1 if findings else 0)
+          PY
+
+      - name: Git whitespace check
+        run: git diff --check
+
+      - name: Upload verification reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: verification-reports
+          path: reports/
+          if-no-files-found: ignore

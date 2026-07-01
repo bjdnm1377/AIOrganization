@@ -1,6 +1,6 @@
 services:
   postgres:
-    image: postgres:18.4
+    image: postgres:16.6
     environment:
       POSTGRES_DB: ai_org
       POSTGRES_USER: ai_org_app
