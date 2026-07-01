@@ -141,18 +141,18 @@ Supply chain local result:
 Verified by real GitHub Actions:
 
 - Workflow: `Verification`
-- Run id: `28535023081`
-- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535023081`
-- Job id: `84594077281`
+- Run id: `28535221021`
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535221021`
+- Job id: `84594748216`
 - Job URL:
-  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535023081/job/84594077281`
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28535221021/job/84594748216`
 - Branch: `master`
-- Commit: `863342e0cdd0e5ccb7bdcca1c6c8638f7f7db0ab`
+- Commit: `77c4a85b80ddcd71144af55ca30823bc2a06ff5d`
 - Trigger: `push`
 - Runner: GitHub-hosted Ubuntu runner
 - PostgreSQL image: `postgres:16.6`
-- Started: `2026-07-01T17:15:13Z`
-- Completed: `2026-07-01T17:16:51Z`
+- Started: `2026-07-01T17:18:44Z`
+- Completed: `2026-07-01T17:20:10Z`
 - Conclusion: `success`
 
 Successful CI steps included Python 3.12 setup, requirements-lock validation,
@@ -161,6 +161,11 @@ repository/checkpoint recovery tests, workflow scenarios A-E, FastAPI e2e,
 checkpoint security tests, Codex Coding Worker isolation tests, full pytest,
 pip-audit, license report, SBOM generation, detect-secrets, and git whitespace
 check.
+
+The preceding implementation commit
+`863342e0cdd0e5ccb7bdcca1c6c8638f7f7db0ab` also passed CI in run
+`28535023081`. The final accepted baseline for the Mock/DryRun stage is the
+later report commit and CI run listed above.
 
 ## 14. Reviewer Findings
 
@@ -199,7 +204,8 @@ Worker smoke test with explicit opt-in authentication and non-production scope.
 - Branch: `master`
 - Verified implementation commit:
   `863342e0cdd0e5ccb7bdcca1c6c8638f7f7db0ab`
-- Final report commit: reported in final response.
+- Final report commit:
+  `77c4a85b80ddcd71144af55ca30823bc2a06ff5d`
 
 ## 18. User Acceptance Options
 

@@ -1,7 +1,8 @@
 ﻿# Acceptance Report - First Runnable Skeleton
 
 Current stage addendum: Codex Coding Worker isolation is tracked in
-`CODEX_WORKER_ACCEPTANCE_REPORT.md`.
+`CODEX_WORKER_ACCEPTANCE_REPORT.md`. The controlled real Codex CLI smoke test
+stage is tracked in `CODEX_REAL_SMOKE_TEST_REPORT.md`.
 
 Date: 2026-07-01
 

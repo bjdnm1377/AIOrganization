@@ -29,15 +29,24 @@
 - API exception handler returns sanitized errors.
 - Codex Worker creates task-scoped Git worktrees and does not merge to the main
   branch.
+- Local real Codex CLI smoke execution requires explicit
+  `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` opt-in.
+- Local real Codex CLI smoke execution uses `workspace-write` sandbox,
+  `on-request` approval, and `--cd <worktree>`.
 - Coding policy detects forbidden file changes, disallowed commands, suspicious
   diff markers, and failed tests before review acceptance.
 - System baseline forbidden files cannot be removed by task metadata.
+- `local_cli` smoke policy narrows default writes to `smoke/**` and forbids
+  source, tests, docs, workflow, dependency, migration, and repository-control
+  files.
 - Prompt, diff, and command logs are sanitized before artifact persistence.
+- Command logs expose logical `worktree://...` URIs and mask raw local worktree
+  paths in Codex JSONL summaries.
 - Default tests do not call real shell, real Codex, real LLM, or untrusted code.
 
 ## Known Risks
 
-- Real Codex runtime is not implemented.
+- Real Codex runtime is implemented only for a controlled local smoke test.
 - Production sandboxing is not implemented.
 - Worktree cleanup is manual in this stage.
 - Role-level PostgreSQL grants are documented but not provisioned locally.
@@ -46,7 +55,6 @@
 
 ## Future Controls
 
-- Controlled real Codex smoke test after explicit user approval.
 - Docker or equivalent execution sandbox design before untrusted code execution.
 - Stronger permission and budget domain model.
 - Separate database roles for application, checkpoint, and migration.

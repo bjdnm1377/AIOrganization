@@ -14,16 +14,20 @@
 - Codex Mock/DryRun Worker with task worktree isolation, diff/log artifacts,
   policy checks, independent review gating, API artifact metadata queries, and
   tests.
+- Controlled local real Codex CLI smoke path with explicit opt-in, task
+  worktree, smoke-only file policy, command-log sanitization, independent
+  review, and manual test coverage.
 
 ## Next Stage
 
-Real Codex Worker controlled smoke test:
+Docker sandbox and real code execution hardening:
 
 - Keep Codex behind Worker and CodexClient ports.
-- Require explicit opt-in authentication and non-production repository scope.
 - Preserve task-scoped Git worktrees and Review Worker gating.
-- Do not add Docker-based untrusted execution until a sandbox design is approved.
+- Design container boundaries before untrusted code execution.
+- Add explicit filesystem, network, time, process, and budget controls.
 - Keep approval gates for shell, network, and file-system permission increases.
+- Continue to avoid automatic merge into the main branch.
 
 ## Later Stages
 

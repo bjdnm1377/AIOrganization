@@ -75,10 +75,25 @@ full test suite, and produces supply-chain reports. Until that workflow actually
 passes, the project remains blocked from entering the Codex Coding Worker
 isolation stage.
 
+## Manual Real Codex Smoke
+
+The default development loop does not call real Codex. To manually run the
+controlled local smoke test on a machine with an authenticated Codex CLI:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_SMOKE = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_smoke.py -q
+```
+
+The smoke test runs inside a temporary Git worktree, allows only `smoke/**`, and
+does not commit or merge output. Default `pytest` collection excludes
+`tests/manual`; the smoke test runs only when this file is invoked explicitly.
+
 ## No Secrets Required
 
-This stage must not require `OPENAI_API_KEY`, Codex credentials, cloud accounts,
-or paid services.
+Default tests and CI must not require `OPENAI_API_KEY`, Codex credentials, cloud
+accounts, or paid services. The manual real Codex smoke test uses the local
+Codex CLI session only when explicitly opted in.
 
 ## Supply Chain Reports
 

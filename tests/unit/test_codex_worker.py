@@ -4,7 +4,10 @@ import subprocess
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
+
 from ai_org.adapters.codex.clients import DryRunCodexClient, LocalCodexCliClient, MockCodexClient
+from ai_org.adapters.codex.policy import CodingWorkerPolicy
 from ai_org.adapters.codex.worker import CodexWorker
 from ai_org.adapters.workers.mock import MockReviewWorker
 from ai_org.domain.enums import AgentResultStatus, ReviewDecision, RiskLevel, TaskStatus, WorkerType
@@ -58,8 +61,225 @@ def test_local_cli_client_returns_not_configured_without_permission(tmp_path: Pa
 
     assert result.status == AgentResultStatus.NOT_CONFIGURED
     assert result.metadata["codex_mode"] == "local_cli"
+    assert result.metadata["no_real_codex_started"] is True
+    assert result.metadata["blocked_reason"] == "REAL_CODEX_SMOKE_OPT_IN_REQUIRED"
     report = MockReviewWorker().review(task, result, 1)
     assert report.decision == ReviewDecision.REJECTED
+
+
+def test_local_cli_client_reports_missing_cli_when_opted_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(command="ai-org-missing-codex-command"),
+    )
+    task = _task(metadata={"codex_mode": "local_cli"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
+    assert result.metadata["no_real_codex_started"] is True
+
+
+def test_local_cli_client_does_not_call_runner_without_opt_in(tmp_path: Path) -> None:
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert runner.calls == []
+
+
+def test_local_cli_client_uses_restricted_exec_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt without sk-test-secret.",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    exec_call = runner.calls[-1]
+    command_value = exec_call["command"]
+    assert isinstance(command_value, list)
+    assert all(isinstance(part, str) for part in command_value)
+    command = [part for part in command_value if isinstance(part, str)]
+    assert exec_call["cwd"] == tmp_path
+    assert "--sandbox" in command
+    assert "workspace-write" in command
+    assert "--ask-for-approval" in command
+    assert "on-request" in command
+    assert "--cd" in command
+    assert str(tmp_path) in command
+    assert "sk-test-secret" not in " ".join(command)
+    logged_exec = result.command_logs[-1]
+    assert "<worktree>" in logged_exec.command
+    assert str(tmp_path) not in logged_exec.command
+    assert logged_exec.cwd == "worktree://codex/task_codex/attempt-1"
+    assert "codex_jsonl_events=" in logged_exec.stdout_summary
+    assert "thread_id" not in logged_exec.stdout_summary
+    assert "session_id" not in logged_exec.stdout_summary
+    assert str(tmp_path) not in logged_exec.stdout_summary
+    assert str(Path.home()) not in logged_exec.stdout_summary
+    assert logged_exec.network_requested is True
+    assert result.metadata["no_real_codex_started"] is False
+    assert result.metadata["external_service_requested"] is True
+    assert result.metadata["external_service_used"] is True
+    assert result.metadata["codex_thread_observed"] is True
+    assert result.metadata["codex_session_observed"] is True
+    assert "auth_status" not in result.metadata
+    assert "doctor_status" not in result.metadata
+    assert "codex_thread_id" not in result.metadata
+    assert "session_id" not in result.metadata
+
+
+def test_local_cli_client_blocks_dangerous_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli", "codex_sandbox": "danger-full-access"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_POLICY_BLOCKED"
+    assert runner.calls == []
+
+
+def test_local_cli_client_timeout_is_failed_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner(timeout_on_exec=True)
+    client = LocalCodexCliClient(runner=runner, timeout_seconds=5)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_TIMEOUT"
+    assert result.command_logs[-1].timed_out is True
+
+
+def test_local_cli_client_failed_exec_is_failed_result(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner(exec_returncode=2)
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_EXECUTION_FAILED"
+    assert result.tests_run[0].status == "failed"
+    assert str(Path.home()) not in result.command_logs[-1].stderr_summary
+
+
+def test_local_cli_policy_cannot_widen_smoke_file_scope() -> None:
+    policy = CodingWorkerPolicy.from_task(
+        _task(metadata={"codex_mode": "local_cli", "allowed_files": ["**"]})
+    )
+
+    assert policy.allowed_files == ["smoke/**"]
+    assert policy.file_violations(["notes.txt"]) == ["notes.txt"]
+    assert policy.file_violations(["smoke/codex_worker_smoke.txt"]) == []
+
+
+def test_local_cli_doctor_timeout_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner(timeout_on_doctor=True)
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_PREFLIGHT_TIMEOUT"
+    assert not any("exec" in _joined_command(call) for call in runner.calls)
+
+
+def test_local_cli_doctor_unparseable_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner(doctor_stdout="not json")
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_PREFLIGHT_NOT_READY"
+    assert not any("exec" in _joined_command(call) for call in runner.calls)
+
+
+def test_local_cli_doctor_nonzero_fails_closed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_SMOKE", "true")
+    runner = FakeCodexRunner(doctor_returncode=1)
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_cli"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create smoke/codex_worker_smoke.txt",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_PREFLIGHT_FAILED"
+    assert not any("exec" in _joined_command(call) for call in runner.calls)
 
 
 def test_review_rejects_forbidden_file_violation(tmp_path: Path) -> None:
@@ -164,6 +384,8 @@ def test_prompt_and_diff_artifacts_are_redacted(tmp_path: Path) -> None:
     assert "SECRET_VALUE" not in diff
     assert result.metadata["policy_violations"] == ["diff:secret_pattern_detected"]
     assert all(not artifact.uri.startswith("file:") for artifact in result.artifacts)
+    assert result.metadata["worktree_path"].startswith("worktree://")
+    assert str(repo) not in str(result.metadata["command_logs"])
 
 
 def _task(metadata: dict[str, object] | None = None) -> Task:
@@ -208,6 +430,13 @@ def _git(cwd: Path, *args: str) -> str:
     return result.stdout
 
 
+def _joined_command(call: dict[str, object]) -> str:
+    command = call["command"]
+    assert isinstance(command, list)
+    assert all(isinstance(part, str) for part in command)
+    return " ".join(part for part in command if isinstance(part, str))
+
+
 class MaliciousCommandClient:
     def start_task(self, request: CodexTaskRequest) -> CodexTaskResult:
         return CodexTaskResult(
@@ -231,3 +460,72 @@ class MaliciousCommandClient:
 
     def cancel_task(self, task_id: str) -> None:
         return None
+
+
+class FakeCodexRunner:
+    def __init__(
+        self,
+        *,
+        exec_returncode: int = 0,
+        timeout_on_exec: bool = False,
+        timeout_on_doctor: bool = False,
+        doctor_returncode: int = 0,
+        doctor_stdout: str | None = None,
+    ) -> None:
+        self.exec_returncode = exec_returncode
+        self.timeout_on_exec = timeout_on_exec
+        self.timeout_on_doctor = timeout_on_doctor
+        self.doctor_returncode = doctor_returncode
+        self.doctor_stdout = doctor_stdout
+        self.calls: list[dict[str, object]] = []
+
+    def __call__(
+        self, command: list[str], cwd: Path, stdin: str | None, timeout_seconds: int
+    ) -> subprocess.CompletedProcess[str]:
+        self.calls.append(
+            {
+                "command": command,
+                "cwd": cwd,
+                "stdin": stdin,
+                "timeout_seconds": timeout_seconds,
+            }
+        )
+        if command == ["codex", "--version"]:
+            return subprocess.CompletedProcess(command, 0, stdout="codex-cli 0.test\n", stderr="")
+        if command == ["codex", "doctor", "--json"]:
+            if self.timeout_on_doctor:
+                raise subprocess.TimeoutExpired(command, timeout_seconds)
+            return subprocess.CompletedProcess(
+                command,
+                self.doctor_returncode,
+                stdout=self.doctor_stdout
+                or (
+                    '{"overallStatus":"ok","codexVersion":"0.test",'
+                    '"checks":{"auth.credentials":{"status":"ok"}}}'
+                ),
+                stderr="" if self.doctor_returncode == 0 else "doctor failed",
+            )
+        if "exec" in command and command[0] == "codex":
+            if self.timeout_on_exec:
+                raise subprocess.TimeoutExpired(
+                    command,
+                    timeout_seconds,
+                    output="partial stdout",
+                    stderr="partial stderr with SECRET_VALUE",
+                )
+            escaped_path = str(cwd / "smoke" / "escaped.txt").replace("\\", "\\\\")
+            return subprocess.CompletedProcess(
+                command,
+                self.exec_returncode,
+                stdout=(
+                    '{"type":"session.created","session_id":"sess_test"}\n'
+                    '{"type":"thread.started","thread_id":"thread_test"}\n'
+                    f'{{"type":"file_change","path":"{cwd / "smoke" / "file.txt"}"}}\n'
+                    f'{{"type":"file_change","path":"{escaped_path}"}}\n'
+                    f'{{"type":"debug","path":"{Path.home() / ".codex" / "auth.json"}"}}\n'
+                ),
+                stderr=""
+                if self.exec_returncode == 0
+                else f"execution failed at {Path.home() / '.codex' / 'auth.json'}",
+            )
+        raise AssertionError(f"Unexpected command: {command}")

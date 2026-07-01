@@ -2,12 +2,14 @@
 
 AI Organization is a two-layer AI organization skeleton. It implements a minimal
 end-to-end workflow with deterministic Mock Workers, a Mock/DryRun Codex Coding
-Worker adapter, review, approvals, audit events, FastAPI query endpoints,
-PostgreSQL mappings, Alembic migrations, and strict LangGraph checkpoint
-serialization checks.
+Worker adapter, an explicitly opt-in local Codex CLI smoke path, review,
+approvals, audit events, FastAPI query endpoints, PostgreSQL mappings, Alembic
+migrations, and strict LangGraph checkpoint serialization checks.
 
-This repository currently does not call real LLMs, real Codex, OpenHands,
-Virtuoso, HFSS, MATLAB, Redis, Temporal, or user-provided untrusted code.
+Default tests and CI do not call real LLMs, real Codex, OpenHands, Virtuoso,
+HFSS, MATLAB, Redis, Temporal, or user-provided untrusted code. Real Codex CLI
+execution exists only for the controlled smoke test and requires
+`AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`.
 
 ## Quick Start
 
@@ -42,8 +44,21 @@ Useful endpoints:
 
 Use `worker_type="codex"` with task metadata such as `codex_mode`,
 `allowed_files`, `forbidden_files`, and `required_tests`. Default tests use only
-`MockCodexClient` and `DryRunCodexClient`; real Codex execution is not enabled in
-this stage.
+`MockCodexClient` and `DryRunCodexClient`.
+
+`LocalCodexCliClient` can run a real local Codex CLI smoke task only when all of
+the following are true:
+
+- `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` is set for the process.
+- `codex --version` succeeds.
+- `codex doctor --json` reports usable authentication.
+- The task uses `codex_mode="local_cli"`.
+- The task is limited to smoke files such as `smoke/**`.
+
+The real smoke path uses `codex --sandbox workspace-write --ask-for-approval
+on-request exec --json --cd <worktree> --color never -`, runs only inside a
+task-scoped Git worktree, records logical artifact URIs, and does not commit,
+merge, or modify the main branch.
 
 ## PostgreSQL
 
@@ -59,3 +74,13 @@ provided only for local PostgreSQL integration testing.
 .\.venv\Scripts\python -m mypy src tests
 .\.venv\Scripts\python -m pytest -q
 ```
+
+Manual real Codex smoke test:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_SMOKE = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_smoke.py -q
+```
+
+Do not run the manual smoke test in CI or without an intentionally configured
+local Codex CLI session.

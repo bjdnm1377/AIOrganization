@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import re
 from collections.abc import Mapping
 from typing import Any
 
@@ -30,6 +31,12 @@ def redact(value: Any) -> Any:
         return [redact(item) for item in value]
     if isinstance(value, tuple):
         return [redact(item) for item in value]
-    if isinstance(value, str) and ("sk-" in value or "SECRET" in value or "TOKEN" in value):
+    if isinstance(value, str) and (
+        _looks_like_openai_key(value) or "SECRET" in value or "TOKEN" in value
+    ):
         return "[REDACTED]"
     return value
+
+
+def _looks_like_openai_key(value: str) -> bool:
+    return re.search(r"\bsk-[A-Za-z0-9_-]{8,}", value) is not None

@@ -8,7 +8,9 @@ Worker isolation.
 
 - Do not call real LLMs.
 - Do not request or use real API keys.
-- Do not start real Codex tasks.
+- Do not start real Codex tasks by default. The only current exception is the
+  controlled local smoke test with explicit `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`
+  opt-in.
 - Do not integrate OpenHands, Virtuoso, HFSS, MATLAB, Redis, or Temporal.
 - Do not execute user-provided untrusted code.
 - Do not implement a real Docker code-execution sandbox in this stage.
@@ -24,6 +26,8 @@ Worker isolation.
   PostgreSQL mapping, FastAPI, Mock Workers, and Codex Mock/DryRun adapters.
 - Codex Worker changes must stay inside task-scoped Git worktrees and must not
   merge into the main branch automatically.
+- Real Codex smoke changes must stay limited to `smoke/**` and must be reviewed
+  independently before acceptance.
 - Workers must return structured results, not free text as the only output.
 - Review Workers must stay independent from the worker that produced the result.
 

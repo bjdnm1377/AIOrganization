@@ -28,6 +28,9 @@ are allowed to create checkpoint tables.
 Artifact endpoints return `Artifact` metadata from structured `AgentResult`
 output. They do not inline full diff, prompt, command-log content, database
 passwords, environment variables, checkpoint binary payloads, or stack traces.
+Codex Worker metadata uses logical worktree values such as
+`worktree://codex/{task_id}/attempt-1`; artifact URIs use
+`artifact://codex/...`.
 
 ## Errors
 
@@ -51,6 +54,32 @@ passwords, environment variables, checkpoint binary payloads, or stack traces.
         "codex_mode": "mock",
         "mock_output_file": "src/generated.txt",
         "allowed_files": ["src/generated.txt"]
+      }
+    }
+  ]
+}
+```
+
+## Example Manual Codex CLI Smoke Task
+
+This task only runs real Codex if the server process was started with
+`AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` and the local Codex CLI is installed and
+authenticated. CI does not enable this path.
+
+```json
+{
+  "title": "Codex smoke",
+  "goal": "Verify controlled real Codex CLI smoke path",
+  "tasks": [
+    {
+      "title": "Create smoke file",
+      "objective": "Create only smoke/codex_worker_smoke.txt with fixed smoke text.",
+      "worker_type": "codex",
+      "metadata": {
+        "codex_mode": "local_cli",
+        "allowed_files": ["smoke/**"],
+        "codex_sandbox": "workspace-write",
+        "codex_approval_policy": "on-request"
       }
     }
   ]

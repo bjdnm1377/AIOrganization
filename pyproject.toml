@@ -36,11 +36,12 @@ dev = [
 where = ["src"]
 
 [tool.pytest.ini_options]
-testpaths = ["tests"]
+testpaths = ["tests/unit", "tests/integration", "tests/e2e"]
 pythonpath = ["src"]
 markers = [
   "docker: requires Docker to be available",
   "postgres: requires PostgreSQL integration database",
+  "manual_codex: requires explicit local Codex CLI smoke-test opt-in",
 ]
 
 [tool.ruff]

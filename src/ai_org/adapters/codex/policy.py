@@ -16,6 +16,24 @@ DEFAULT_FORBIDDEN_FILES = [
     "requirements-lock.txt",
 ]
 
+REAL_CLI_DEFAULT_ALLOWED_FILES = ["smoke/**"]
+
+REAL_CLI_FORBIDDEN_FILES = [
+    ".git/**",
+    ".github/**",
+    ".env",
+    ".env.*",
+    "requirements-lock.txt",
+    "requirements.in",
+    "pyproject.toml",
+    "alembic/**",
+    "src/**",
+    "tests/**",
+    "docs/**",
+    "AGENTS.md",
+    "README.md",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerPolicy:
@@ -34,15 +52,23 @@ class CodingWorkerPolicy:
     @classmethod
     def from_task(cls, task: Task) -> CodingWorkerPolicy:
         metadata = task.metadata
+        mode = _string(metadata.get("codex_mode"), default="dry_run")
+        default_allowed_files = REAL_CLI_DEFAULT_ALLOWED_FILES if mode == "local_cli" else ["**"]
+        default_allowed_commands = ["codex"] if mode == "local_cli" else []
         forbidden_files = [
             *DEFAULT_FORBIDDEN_FILES,
+            *(REAL_CLI_FORBIDDEN_FILES if mode == "local_cli" else []),
             *_string_list(metadata.get("forbidden_files"), default=[]),
         ]
         return cls(
-            mode=_string(metadata.get("codex_mode"), default="dry_run"),
-            allowed_files=_string_list(metadata.get("allowed_files"), default=["**"]),
+            mode=mode,
+            allowed_files=default_allowed_files
+            if mode == "local_cli"
+            else _string_list(metadata.get("allowed_files"), default=default_allowed_files),
             forbidden_files=_deduplicate(forbidden_files),
-            allowed_commands=_string_list(metadata.get("allowed_commands"), default=[]),
+            allowed_commands=_string_list(
+                metadata.get("allowed_commands"), default=default_allowed_commands
+            ),
             forbidden_commands=_string_list(metadata.get("forbidden_commands"), default=[]),
             required_tests=_string_list(metadata.get("required_tests"), default=[]),
             mock_output_file=_string(

@@ -25,6 +25,10 @@ execution settings. For Codex tasks, supported keys include:
 - `allowed_files` and `forbidden_files`.
 - `allowed_commands` and `forbidden_commands`.
 - `required_tests`.
+- `codex_sandbox`: for `local_cli`, allowed values are `workspace-write` and
+  `read-only`; default is `workspace-write`.
+- `codex_approval_policy`: for `local_cli`, allowed values are `on-request` and
+  `untrusted`; default is `on-request`.
 - `mock_output_file`.
 - `simulate_forbidden_file`, `simulate_test_failure`,
   `simulate_not_configured`, and `simulate_secret_output` for deterministic
@@ -45,10 +49,11 @@ execution settings. For Codex tasks, supported keys include:
 - `unresolved_questions`
 - `metadata`
 
-Codex Worker metadata includes `codex_mode`, `worktree_path`, `branch_name`,
-`base_commit`, `head_commit`, `changed_files`, `diff_summary`, `tests_run`,
-`command_logs`, optional session identifiers, `blocked_reason`, and
-`policy_violations`.
+Codex Worker metadata includes `codex_mode`, logical `worktree_path` /
+`worktree_uri`, `branch_name`, `base_commit`, `head_commit`, `changed_files`,
+`diff_summary`, `tests_run`, summarized `command_logs`, optional
+`codex_thread_observed` / `codex_session_observed` booleans, `blocked_reason`,
+and `policy_violations`.
 
 ## ReviewReport
 
@@ -60,5 +65,13 @@ accepted. Failed coding tests trigger bounded rework.
 ## Real Codex Status
 
 `MockCodexClient` and `DryRunCodexClient` are implemented and used by default.
-`LocalCodexCliClient` is a NOT_CONFIGURED stub and does not invoke real Codex in
-this stage.
+`LocalCodexCliClient` is implemented as a manual real Codex CLI smoke path. It
+returns `NOT_CONFIGURED` unless `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` is set and
+the local Codex CLI is installed and authenticated. CI never enables this flag.
+
+The real smoke path can return:
+
+- `NOT_CONFIGURED`: no opt-in, missing CLI, or auth not ready.
+- `FAILED`: timeout, unsafe configuration, or CLI execution failure.
+- `SUCCEEDED`: Codex CLI completed and independent review accepted the scoped
+  smoke diff.

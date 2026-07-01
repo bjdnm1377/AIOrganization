@@ -70,10 +70,11 @@ class CodexWorker(Worker):
             and not entry.command.startswith("mock.")
         ]
         command_violations = set(policy.command_violations(commands))
+        logical_worktree = _worktree_uri(request)
         command_logs = [
             replace(
                 entry,
-                cwd=entry.cwd or str(context.worktree_path),
+                cwd=entry.cwd or logical_worktree,
                 allowed=entry.command not in command_violations,
             )
             for entry in task_result.command_logs
@@ -103,7 +104,8 @@ class CodexWorker(Worker):
             **task_result.metadata,
             "coding_worker": True,
             "codex_mode": policy.mode,
-            "worktree_path": str(context.worktree_path),
+            "worktree_path": logical_worktree,
+            "worktree_uri": logical_worktree,
             "branch_name": context.branch_name,
             "base_commit": context.base_commit,
             "head_commit": self.worktree_service.head_commit(context.worktree_path),
@@ -126,11 +128,13 @@ class CodexWorker(Worker):
             "tests_run": [record.model_dump(mode="json") for record in task_result.tests_run],
             "command_logs": command_payload,
             "prompt_sha256": _sha256(prompt),
-            "no_real_codex_started": policy.mode != "local_cli",
-            "codex_thread_id": None,
-            "session_id": None,
-            "blocked_reason": task_result.summary
-            if task_result.status.value == "NOT_CONFIGURED"
+            "no_real_codex_started": task_result.metadata.get(
+                "no_real_codex_started", policy.mode != "local_cli"
+            ),
+            "codex_thread_observed": task_result.metadata.get("codex_thread_observed", False),
+            "codex_session_observed": task_result.metadata.get("codex_session_observed", False),
+            "blocked_reason": task_result.metadata.get("blocked_reason")
+            if task_result.status.value in {"NOT_CONFIGURED", "FAILED"}
             else None,
             "worktree_cleanup": "manual",
         }
@@ -178,3 +182,7 @@ def _artifact(name: str, path: Path, kind: str, request: WorkerRequest) -> Artif
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _worktree_uri(request: WorkerRequest) -> str:
+    return f"worktree://codex/{request.task.task_id}/attempt-{request.attempt_number}"

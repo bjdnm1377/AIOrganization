@@ -7,10 +7,11 @@ This repository implements a two-layer AI organization skeleton:
 1. Control layer: project, task, approval, worker-run, review, status, audit,
    and LangGraph workflow orchestration.
 2. Execution layer: deterministic Mock Workers plus a Codex Coding Worker
-   adapter with Mock and DryRun clients.
+   adapter with Mock, DryRun, and explicitly opt-in local CLI smoke clients.
 
 No default path calls a real LLM, starts a real Codex process, integrates
-OpenHands, or executes user-provided untrusted code.
+OpenHands, or executes user-provided untrusted code. The only real Codex path is
+the manual smoke test guarded by `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`.
 
 ## Module Layout
 
@@ -45,7 +46,7 @@ flowchart TD
     Codex --> Client["CodexClient port"]
     Client --> DryRun["DryRunCodexClient"]
     Client --> MockCodex["MockCodexClient"]
-    Client --> LocalStub["LocalCodexCliClient NOT_CONFIGURED"]
+    Client --> LocalCli["LocalCodexCliClient manual smoke"]
 ```
 
 ## Implemented Paths
@@ -59,6 +60,10 @@ flowchart TD
 - Codex Mock/DryRun task: create task worktree, render constrained prompt, collect
   changed files/diff/log artifacts, persist structured AgentResult metadata, and
   require independent review.
+- Codex local CLI smoke task: with explicit opt-in, detect Codex CLI, check
+  summarized auth status, run `codex exec` in a task worktree with
+  `workspace-write` sandbox and `on-request` approval, allow only `smoke/**`,
+  collect sanitized artifacts, and require independent review.
 
 ## Persistence
 

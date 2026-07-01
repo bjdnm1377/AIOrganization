@@ -14,7 +14,22 @@ Safety controls:
   worktree root.
 - Symlink roots that resolve outside the repository are rejected.
 - The main working tree is not modified by Mock/DryRun Codex task file changes.
+- The main working tree is not modified by the manual real Codex CLI smoke test;
+  Codex runs in the task worktree with `--cd <worktree>`.
 - No automatic merge is performed.
+- API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
+  URIs instead of local absolute paths.
+
+## Real Codex Smoke Scope
+
+For `codex_mode="local_cli"`, the intended smoke task creates only:
+
+- `smoke/codex_worker_smoke.txt`
+
+The smoke-stage policy forbids changes to source, tests, docs, dependency
+files, workflow files, migrations, `AGENTS.md`, `README.md`, `.env*`, and
+`.git/**`. Any forbidden change is reported by `DiffCollector` and rejected by
+the independent Review Worker.
 
 ## Cleanup
 
