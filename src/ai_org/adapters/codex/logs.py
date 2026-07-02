@@ -29,6 +29,16 @@ class CommandLogCollector:
                 "network_requested": entry.network_requested,
                 "allowed": entry.allowed,
                 "approval_required": entry.approval_required,
+                "timeout_type": entry.timeout_type,
+                "elapsed_ms": entry.elapsed_ms,
+                "jsonl_event_count": entry.jsonl_event_count,
+                "jsonl_error_events": entry.jsonl_error_events,
+                "jsonl_file_change_events": entry.jsonl_file_change_events,
+                "last_jsonl_event_type": entry.last_jsonl_event_type,
+                "approval_requested": entry.approval_requested,
+                "process_killed": entry.process_killed,
+                "process_tree_killed": entry.process_tree_killed,
+                "cleanup_error": _sanitize(entry.cleanup_error),
             }
             for entry in entries
         ]

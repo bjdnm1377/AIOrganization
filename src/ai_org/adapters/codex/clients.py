@@ -4,8 +4,10 @@ import json
 import os
 import re
 import shutil
+import signal
 import subprocess
-from collections.abc import Callable, Mapping
+import time
+from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -39,6 +41,26 @@ WINDOWS_ABSOLUTE_PATH = re.compile(r"(?i)\b[A-Z]:(?:\\\\|\\)[^\"'\s,}\]]+")
 POSIX_ABSOLUTE_PATH = re.compile(r"(?<![\w])/(?:Users|home|tmp|var|private|mnt)/[^\s\"',}\]]+")
 CODE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_CODE_TASK"
 MULTI_FILE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK"
+
+
+class CodexTimeoutExpired(subprocess.TimeoutExpired):
+    def __init__(
+        self,
+        cmd: str | bytes | os.PathLike[str] | os.PathLike[bytes] | Sequence[str | bytes],
+        timeout: float,
+        *,
+        output: str = "",
+        stderr: str = "",
+        elapsed_ms: int = 0,
+        process_killed: bool | None = None,
+        process_tree_killed: bool | None = None,
+        cleanup_error: str = "",
+    ) -> None:
+        super().__init__(cmd, timeout, output=output, stderr=stderr)
+        self.elapsed_ms = elapsed_ms
+        self.process_killed = process_killed
+        self.process_tree_killed = process_tree_killed
+        self.cleanup_error = cleanup_error
 
 
 @dataclass(frozen=True, slots=True)
@@ -210,7 +232,12 @@ class LocalCodexCliClient(CodexClient):
             self._results[request.task.task_id] = result
             return result
         except subprocess.TimeoutExpired as exc:
-            log = _timeout_log("codex --version", logical_cwd, exc)
+            log = _timeout_log(
+                "codex --version",
+                logical_cwd,
+                exc,
+                timeout_type="CODEX_CLI_VERSION_TIMEOUT",
+            )
             result = _failed_result(
                 "Codex CLI version check timed out.",
                 logs=[log],
@@ -218,6 +245,7 @@ class LocalCodexCliClient(CodexClient):
                     "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_VERSION_TIMEOUT",
+                    **_timeout_metadata(exc, timeout_type="CODEX_CLI_VERSION_TIMEOUT"),
                 },
             )
             self._results[request.task.task_id] = result
@@ -253,6 +281,7 @@ class LocalCodexCliClient(CodexClient):
                     exc,
                     network_requested=True,
                     path_redactions=path_redactions,
+                    timeout_type="CODEX_CLI_PREFLIGHT_TIMEOUT",
                 )
             )
             result = _not_configured_result(
@@ -263,6 +292,7 @@ class LocalCodexCliClient(CodexClient):
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_PREFLIGHT_TIMEOUT",
                     "codex_preflight_passed": False,
+                    **_timeout_metadata(exc, timeout_type="CODEX_CLI_PREFLIGHT_TIMEOUT"),
                 },
             )
             self._results[request.task.task_id] = result
@@ -346,7 +376,14 @@ class LocalCodexCliClient(CodexClient):
                     exc,
                     network_requested=True,
                     path_redactions=path_redactions,
+                    timeout_type="CODEX_CLI_TIMEOUT",
+                    summarize_codex_jsonl=True,
                 )
+            )
+            timeout_metadata = _timeout_metadata(
+                exc,
+                timeout_type="CODEX_CLI_TIMEOUT",
+                summarize_codex_jsonl=True,
             )
             result = _failed_result(
                 f"Codex CLI {opt_in.task_label} execution timed out.",
@@ -360,6 +397,9 @@ class LocalCodexCliClient(CodexClient):
                     "approval_policy": approval_policy,
                     "codex_preflight_passed": True,
                     "external_service_requested": True,
+                    "external_service_used": True,
+                    "codex_exec_timeout_seconds": self.timeout_seconds,
+                    **timeout_metadata,
                 },
             )
             self._results[request.task.task_id] = result
@@ -552,18 +592,107 @@ def _failed_result(
 def _run_subprocess(
     command: list[str], cwd: Path, stdin: str | None, timeout_seconds: int
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    started = time.monotonic()
+    popen_kwargs: dict[str, Any] = {}
+    if os.name == "nt":
+        popen_kwargs["creationflags"] = getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+    else:
+        popen_kwargs["start_new_session"] = True
+    process = subprocess.Popen(
         command,
         cwd=str(cwd),
-        input=stdin,
-        check=False,
+        stdin=subprocess.PIPE,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.PIPE,
         text=True,
         encoding="utf-8",
         errors="replace",
-        capture_output=True,
-        timeout=timeout_seconds,
         env=_safe_environment(),
+        **popen_kwargs,
     )
+    try:
+        stdout, stderr = process.communicate(input=stdin, timeout=timeout_seconds)
+    except subprocess.TimeoutExpired as exc:
+        cleanup = _kill_process_tree(process)
+        try:
+            stdout, stderr = process.communicate(timeout=5)
+        except subprocess.TimeoutExpired:
+            process.kill()
+            stdout, stderr = process.communicate()
+            cleanup["process_killed"] = True
+            cleanup["cleanup_error"] = _join_cleanup_errors(
+                str(cleanup.get("cleanup_error", "")),
+                "process did not exit after process-tree kill; killed parent process",
+            )
+        timeout = CodexTimeoutExpired(
+            command,
+            timeout_seconds,
+            output=stdout or _timeout_value(exc.stdout),
+            stderr=stderr or _timeout_value(exc.stderr),
+            elapsed_ms=_elapsed_ms(started),
+            process_killed=bool(cleanup.get("process_killed", False)),
+            process_tree_killed=bool(cleanup.get("process_tree_killed", False)),
+            cleanup_error=str(cleanup.get("cleanup_error", "")),
+        )
+        raise timeout from exc
+    result = subprocess.CompletedProcess(
+        command,
+        process.returncode,
+        stdout=stdout,
+        stderr=stderr,
+    )
+    vars(result)["duration_ms"] = _elapsed_ms(started)
+    return result
+
+
+def _kill_process_tree(process: subprocess.Popen[str]) -> dict[str, object]:
+    if process.poll() is not None:
+        return {"process_killed": False, "process_tree_killed": False, "cleanup_error": ""}
+    if os.name == "nt":
+        try:
+            result = subprocess.run(
+                ["taskkill", "/PID", str(process.pid), "/T", "/F"],
+                check=False,
+                text=True,
+                capture_output=True,
+                timeout=10,
+            )
+        except (OSError, subprocess.TimeoutExpired) as exc:
+            process.kill()
+            return {
+                "process_killed": True,
+                "process_tree_killed": False,
+                "cleanup_error": str(exc),
+            }
+        if result.returncode == 0:
+            return {"process_killed": True, "process_tree_killed": True, "cleanup_error": ""}
+        process.kill()
+        return {
+            "process_killed": True,
+            "process_tree_killed": False,
+            "cleanup_error": _summarize(result.stderr or result.stdout),
+        }
+    killpg = getattr(os, "killpg", None)
+    if not callable(killpg):
+        process.kill()
+        return {
+            "process_killed": True,
+            "process_tree_killed": False,
+            "cleanup_error": "process-group kill is unavailable on this platform",
+        }
+    try:
+        kill_signal = getattr(signal, "SIGKILL", signal.SIGTERM)
+        killpg(process.pid, kill_signal)
+        return {"process_killed": True, "process_tree_killed": True, "cleanup_error": ""}
+    except ProcessLookupError:
+        return {"process_killed": False, "process_tree_killed": False, "cleanup_error": ""}
+    except OSError as exc:
+        process.kill()
+        return {
+            "process_killed": True,
+            "process_tree_killed": False,
+            "cleanup_error": str(exc),
+        }
 
 
 def _safe_environment() -> dict[str, str]:
@@ -613,6 +742,21 @@ def _metadata_string(metadata: Mapping[str, object], key: str, default: str) -> 
     return value if isinstance(value, str) and value else default
 
 
+def _metadata_int(metadata: Mapping[str, object], key: str) -> int:
+    value = metadata.get(key)
+    return value if isinstance(value, int) else 0
+
+
+def _metadata_str(metadata: Mapping[str, object], key: str) -> str:
+    value = metadata.get(key)
+    return value if isinstance(value, str) else ""
+
+
+def _metadata_bool(metadata: Mapping[str, object], key: str) -> bool:
+    value = metadata.get(key)
+    return value if isinstance(value, bool) else False
+
+
 def _logical_cwd(request: CodexTaskRequest) -> str:
     return f"worktree://codex/{request.task.task_id}/attempt-{request.attempt_number}"
 
@@ -631,6 +775,7 @@ def _completed_log(
         if summarize_codex_jsonl
         else _summarize(result.stdout, path_redactions=path_redactions)
     )
+    jsonl_observability = _jsonl_observability(result.stdout) if summarize_codex_jsonl else {}
     return CommandLogEntry(
         command=command,
         status="completed" if result.returncode == 0 else "failed",
@@ -638,11 +783,17 @@ def _completed_log(
         cwd=logical_cwd,
         stdout_summary=stdout_summary,
         stderr_summary=_summarize(result.stderr, path_redactions=path_redactions),
-        duration_ms=0,
+        duration_ms=_duration_ms(result),
+        elapsed_ms=_duration_ms(result),
         timed_out=False,
         network_requested=network_requested,
         allowed=True,
         approval_required=False,
+        jsonl_event_count=_metadata_int(jsonl_observability, "jsonl_event_count"),
+        jsonl_error_events=_metadata_int(jsonl_observability, "jsonl_error_events"),
+        jsonl_file_change_events=_metadata_int(jsonl_observability, "jsonl_file_change_events"),
+        last_jsonl_event_type=_metadata_str(jsonl_observability, "last_jsonl_event_type"),
+        approval_requested=_metadata_bool(jsonl_observability, "approval_requested"),
     )
 
 
@@ -680,19 +831,39 @@ def _timeout_log(
     *,
     network_requested: bool = False,
     path_redactions: Mapping[str, str] | None = None,
+    timeout_type: str,
+    summarize_codex_jsonl: bool = False,
 ) -> CommandLogEntry:
+    stdout = _timeout_value(exc.stdout)
+    stderr = _timeout_value(exc.stderr)
+    jsonl_observability = _jsonl_observability(stdout) if summarize_codex_jsonl else {}
+    stdout_summary = (
+        _summarize_codex_jsonl(stdout)
+        if summarize_codex_jsonl
+        else _summarize(stdout, path_redactions=path_redactions)
+    )
     return CommandLogEntry(
         command=command,
         status="timeout",
         exit_code=None,
         cwd=logical_cwd,
-        stdout_summary=_summarize(_timeout_value(exc.stdout), path_redactions=path_redactions),
-        stderr_summary=_summarize(_timeout_value(exc.stderr), path_redactions=path_redactions),
-        duration_ms=0,
+        stdout_summary=stdout_summary,
+        stderr_summary=_summarize(stderr, path_redactions=path_redactions),
+        duration_ms=_timeout_elapsed_ms(exc),
+        elapsed_ms=_timeout_elapsed_ms(exc),
         timed_out=True,
         network_requested=network_requested,
         allowed=True,
         approval_required=False,
+        timeout_type=timeout_type,
+        jsonl_event_count=_metadata_int(jsonl_observability, "jsonl_event_count"),
+        jsonl_error_events=_metadata_int(jsonl_observability, "jsonl_error_events"),
+        jsonl_file_change_events=_metadata_int(jsonl_observability, "jsonl_file_change_events"),
+        last_jsonl_event_type=_metadata_str(jsonl_observability, "last_jsonl_event_type"),
+        approval_requested=_metadata_bool(jsonl_observability, "approval_requested"),
+        process_killed=_timeout_bool(exc, "process_killed"),
+        process_tree_killed=_timeout_bool(exc, "process_tree_killed"),
+        cleanup_error=_summarize(_timeout_cleanup_error(exc)),
     )
 
 
@@ -700,6 +871,56 @@ def _timeout_value(value: str | bytes | None) -> str:
     if isinstance(value, bytes):
         return value.decode("utf-8", errors="replace")
     return value or ""
+
+
+def _elapsed_ms(started: float) -> int:
+    return max(0, int((time.monotonic() - started) * 1000))
+
+
+def _duration_ms(result: subprocess.CompletedProcess[str]) -> int:
+    value = vars(result).get("duration_ms", 0)
+    return value if isinstance(value, int) else 0
+
+
+def _timeout_elapsed_ms(exc: subprocess.TimeoutExpired) -> int:
+    return exc.elapsed_ms if isinstance(exc, CodexTimeoutExpired) else 0
+
+
+def _timeout_bool(exc: subprocess.TimeoutExpired, name: str) -> bool | None:
+    if not isinstance(exc, CodexTimeoutExpired):
+        return None
+    value = exc.process_killed if name == "process_killed" else exc.process_tree_killed
+    return value if isinstance(value, bool) else None
+
+
+def _timeout_cleanup_error(exc: subprocess.TimeoutExpired) -> str:
+    return exc.cleanup_error if isinstance(exc, CodexTimeoutExpired) else ""
+
+
+def _timeout_metadata(
+    exc: subprocess.TimeoutExpired,
+    *,
+    timeout_type: str,
+    summarize_codex_jsonl: bool = False,
+) -> dict[str, object]:
+    stdout = _timeout_value(exc.stdout)
+    observability = _jsonl_observability(stdout) if summarize_codex_jsonl else {}
+    return {
+        "timeout_type": timeout_type,
+        "timeout_seconds": exc.timeout,
+        "timeout_elapsed_ms": _timeout_elapsed_ms(exc),
+        "timeout_process_killed": _timeout_bool(exc, "process_killed"),
+        "timeout_process_tree_killed": _timeout_bool(exc, "process_tree_killed"),
+        "timeout_cleanup_error": _summarize(_timeout_cleanup_error(exc)),
+        **observability,
+        **(_jsonl_metadata(stdout) if summarize_codex_jsonl else {}),
+    }
+
+
+def _join_cleanup_errors(first: str, second: str) -> str:
+    if first and second:
+        return f"{first}; {second}"
+    return first or second
 
 
 def _summarize(value: str, *, path_redactions: Mapping[str, str] | None = None) -> str:
@@ -786,12 +1007,12 @@ def _jsonl_metadata(stdout: str) -> dict[str, object]:
     return metadata
 
 
-def _summarize_codex_jsonl(stdout: str) -> str:
+def _jsonl_observability(stdout: str) -> dict[str, object]:
     event_count = 0
     error_events = 0
     file_change_events = 0
-    thread_observed = False
-    session_observed = False
+    last_event_type = ""
+    approval_requested = False
     for line in stdout.splitlines():
         try:
             event = json.loads(line)
@@ -800,24 +1021,56 @@ def _summarize_codex_jsonl(stdout: str) -> str:
         if not isinstance(event, dict):
             continue
         event_count += 1
-        event_type = event.get("type")
+        event_type = _event_type(event)
+        last_event_type = event_type or last_event_type
         if event_type == "error":
             error_events += 1
-        if _has_string(event, "session_id"):
-            session_observed = True
-        if _has_string(event, "thread_id") or _has_string(event, "conversation_id"):
-            thread_observed = True
         item = event.get("item")
         if isinstance(item, dict) and item.get("type") == "file_change":
             file_change_events += 1
+        if _event_requests_approval(event):
+            approval_requested = True
+    return {
+        "jsonl_event_count": event_count,
+        "jsonl_error_events": error_events,
+        "jsonl_file_change_events": file_change_events,
+        "last_jsonl_event_type": last_event_type,
+        "approval_requested": approval_requested,
+    }
+
+
+def _summarize_codex_jsonl(stdout: str) -> str:
+    observability = _jsonl_observability(stdout)
+    metadata = _jsonl_metadata(stdout)
+    event_count = _metadata_int(observability, "jsonl_event_count")
     if event_count == 0:
         return _summarize(stdout)
     return (
-        f"codex_jsonl_events={event_count}; error_events={error_events}; "
-        f"file_change_events={file_change_events}; "
-        f"thread_observed={str(thread_observed).lower()}; "
-        f"session_observed={str(session_observed).lower()}"
+        f"codex_jsonl_events={event_count}; "
+        f"error_events={observability['jsonl_error_events']}; "
+        f"file_change_events={observability['jsonl_file_change_events']}; "
+        f"last_event={observability['last_jsonl_event_type']}; "
+        f"approval_requested={str(observability['approval_requested']).lower()}; "
+        f"thread_observed={str(metadata['codex_thread_observed']).lower()}; "
+        f"session_observed={str(metadata['codex_session_observed']).lower()}"
     )
+
+
+def _event_type(event: Mapping[str, Any]) -> str:
+    value = event.get("type")
+    if isinstance(value, str):
+        return value
+    item = event.get("item")
+    if isinstance(item, dict):
+        item_type = item.get("type")
+        if isinstance(item_type, str):
+            return f"item.{item_type}"
+    return ""
+
+
+def _event_requests_approval(event: Mapping[str, Any]) -> bool:
+    text = json.dumps(event, sort_keys=True).lower()
+    return "approval" in text or "permission" in text
 
 
 def _has_string(event: Mapping[str, Any], key: str) -> bool:

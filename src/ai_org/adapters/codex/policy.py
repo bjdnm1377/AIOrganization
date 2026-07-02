@@ -24,7 +24,6 @@ REAL_CODE_TASK_ALLOWED_FILES = [
 ]
 
 REAL_MULTI_FILE_TASK_ALLOWED_FILES = [
-    "docs/MERGE_APPROVAL.md",
     "src/ai_org/adapters/codex/merge_candidate.py",
     "tests/unit/test_codex_merge_candidate.py",
 ]
@@ -70,6 +69,7 @@ REAL_MULTI_FILE_TASK_FORBIDDEN_FILES = [
     "requirements.in",
     "pyproject.toml",
     "alembic/**",
+    "docs/**",
     "AGENTS.md",
     "README.md",
     "docker-compose.yml",

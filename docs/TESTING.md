@@ -20,6 +20,10 @@
 - Local Codex CLI multi-file task opt-in, missing CLI, restricted command
   construction, fixed file scope, MergeCandidate artifact creation, and Docker
   sandbox test-log behavior.
+- Codex CLI exec timeout classification as `CODEX_CLI_TIMEOUT`, timeout
+  command-log diagnostics, process-tree cleanup metadata, deterministic
+  validation blocking, Review Worker rejection, and no accepted MergeCandidate
+  artifact after timeout.
 - Local real Codex main worktree modification detection and Review Worker
   rejection.
 - Main-worktree fingerprint coverage for clean trees, tracked diffs, staged
@@ -97,7 +101,6 @@ $env:AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK = "true"
 
 The test runs a `codex_mode="local_multi_file_task"` TaskSpec through the normal
 WorkerRegistry and workflow, creates a task worktree, asks Codex to modify only
-`docs/MERGE_APPROVAL.md`,
 `src/ai_org/adapters/codex/merge_candidate.py`, and
 `tests/unit/test_codex_merge_candidate.py`, runs a fixed DockerSandboxRunner
 validation command, records logical artifact URIs, creates a
@@ -105,6 +108,11 @@ validation command, records logical artifact URIs, creates a
 acceptance, and asserts that the main branch remains unchanged. If Docker is
 unavailable, the manual test skips with a clear reason and the stage report must
 not claim local Docker execution passed.
+
+The current real multi-file prompt is intentionally shorter than the earlier
+three-file version. Documentation updates are not included in the real Codex
+task; this reduces timeout risk without increasing permissions or relaxing file
+policy.
 
 ## PostgreSQL Integration
 

@@ -29,13 +29,14 @@
   validation, sanitized artifacts, independent review, `merge_candidate.created`
   audit event, no automatic commit, merge, push, PR, or deploy, and a
   fail-closed main-worktree fingerprint guard. The prior real validation found
-  a main-worktree modification and must be re-run successfully before advancing
-  to merge implementation.
+  a main-worktree modification. A later revalidation kept the main-worktree
+  fingerprint stable but timed out during Codex CLI exec, so the current stage
+  is timeout reduction and revalidation before any merge implementation.
 
 ## Next Stage
 
-Only after the controlled multi-file isolation revalidation passes, the next
-stage may be human-approved merge implementation:
+Only after the controlled multi-file timeout and isolation revalidation passes,
+the next stage may be human-approved merge implementation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.

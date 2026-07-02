@@ -85,7 +85,6 @@ The controlled multi-file path requires
 
 Current allowed files are fixed in policy:
 
-- `docs/MERGE_APPROVAL.md`
 - `src/ai_org/adapters/codex/merge_candidate.py`
 - `tests/unit/test_codex_merge_candidate.py`
 
@@ -104,6 +103,20 @@ also modified the main worktree. The current implementation treats that as a
 hard failure and independent review rejects it. A successful MergeCandidate is
 only possible when the task worktree diff is valid and the main-worktree
 fingerprint is identical before and after execution.
+
+After a later real multi-file revalidation attempt, the main-worktree
+fingerprint stayed stable but the Codex CLI exec process timed out before
+producing a diff. The current timeout handling classifies that failure as
+`CODEX_CLI_TIMEOUT`, records timeout type, elapsed time, partial JSONL event
+counts, last event type, approval-request observation, and process-tree cleanup
+status, and still runs the main-worktree fingerprint post-check before returning
+the failed result. Timeout results do not create accepted MergeCandidate
+artifacts and are rejected by the Review Worker.
+
+To reduce task complexity for the next real revalidation, the manual
+multi-file task is now limited to the two code/test files above. Documentation
+updates such as `docs/MERGE_APPROVAL.md` stay outside the real Codex task and
+remain human/system-authored repository documentation.
 
 After a successful task result, `CodexWorker` writes a `merge-candidate` JSON
 artifact with logical URI

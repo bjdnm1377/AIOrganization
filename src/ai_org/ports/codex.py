@@ -22,6 +22,16 @@ class CommandLogEntry:
     network_requested: bool = False
     allowed: bool = True
     approval_required: bool = False
+    timeout_type: str | None = None
+    elapsed_ms: int = 0
+    jsonl_event_count: int = 0
+    jsonl_error_events: int = 0
+    jsonl_file_change_events: int = 0
+    last_jsonl_event_type: str = ""
+    approval_requested: bool = False
+    process_killed: bool | None = None
+    process_tree_killed: bool | None = None
+    cleanup_error: str = ""
 
 
 @dataclass(frozen=True, slots=True)

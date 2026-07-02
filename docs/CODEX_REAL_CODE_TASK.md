@@ -108,7 +108,10 @@ code task.
   `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` manual path and still stops
   at a pending MergeCandidate summary. The multi-file path has an additional
   main-worktree fingerprint guard after a prior real Codex run modified the
-  main worktree outside the task worktree.
+  main worktree outside the task worktree. A later revalidation kept the main
+  worktree stable but timed out during Codex CLI exec; the current recovery
+  keeps the guard and reduces the real multi-file task to code plus unit-test
+  files only.
 - Production arbitrary-code sandboxing.
 - User-provided shell command execution in Docker.
 - OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or Web frontend

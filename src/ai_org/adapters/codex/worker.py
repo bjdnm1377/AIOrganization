@@ -67,9 +67,7 @@ REAL_MULTI_FILE_TASK_SANDBOX_COMMAND = (
         "== 'human-approval-only'; "
         "assert pathlib.Path('tests/unit/test_codex_merge_candidate.py').exists(); "
         "test_text = pathlib.Path('tests/unit/test_codex_merge_candidate.py').read_text(); "
-        "assert 'MERGE_CANDIDATE_MANUAL_TASK_MARKER' in test_text; "
-        "doc_text = pathlib.Path('docs/MERGE_APPROVAL.md').read_text(); "
-        "assert 'human-approval-only' in doc_text"
+        "assert 'MERGE_CANDIDATE_MANUAL_TASK_MARKER' in test_text"
     ),
 )
 

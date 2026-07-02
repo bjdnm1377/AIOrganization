@@ -66,13 +66,13 @@ or pushed automatically.
 For `codex_mode="local_multi_file_task"`, the intended task may create or update
 only:
 
-- `docs/MERGE_APPROVAL.md`
 - `src/ai_org/adapters/codex/merge_candidate.py`
 - `tests/unit/test_codex_merge_candidate.py`
 
-The policy forbids repository control files, workflow files, dependency files,
-migrations, scripts, `AGENTS.md`, `README.md`, `docker-compose.yml`, and
-`.env*`. The task runs in a dedicated worktree. The resulting
+The policy forbids documentation files, repository control files, workflow
+files, dependency files, migrations, scripts, `AGENTS.md`, `README.md`,
+`docker-compose.yml`, and `.env*`. The task runs in a dedicated worktree. The
+resulting
 MergeCandidate artifact is a review surface only; it is not committed, merged,
 pushed, or deployed automatically.
 
@@ -82,6 +82,12 @@ failed the stage. The current guard is fail-closed: any tracked, staged, or
 untracked main-worktree content change during local real Codex execution forces
 the task result to `FAILED`, adds `main_worktree:modified`, prevents a passing
 MergeCandidate artifact, and causes independent review rejection.
+
+A later revalidation run kept the main-worktree fingerprint stable but timed
+out during Codex CLI exec before producing a task-worktree diff. Timeout is now
+reported as `CODEX_CLI_TIMEOUT` with diagnostic command-log metadata and
+process-tree cleanup status. It remains a blocked result and cannot advance to
+merge approval.
 
 ## Cleanup
 

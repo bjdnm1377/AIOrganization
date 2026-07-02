@@ -43,12 +43,11 @@ code-task scope.
 
 When `codex_mode="local_multi_file_task"`, the policy narrows writes to:
 
-- `docs/MERGE_APPROVAL.md`
 - `src/ai_org/adapters/codex/merge_candidate.py`
 - `tests/unit/test_codex_merge_candidate.py`
 
 It forbids repository control files, workflow files, dependency files,
-migrations, scripts, environment files, `AGENTS.md`, `README.md`, and
+migrations, docs, scripts, environment files, `AGENTS.md`, `README.md`, and
 production config. Task metadata cannot widen this multi-file scope.
 
 `DiffCollector` records changed, created, deleted, and binary files; detects
@@ -82,6 +81,14 @@ with `<worktree>`, and API-visible metadata uses `worktree://...` logical URIs.
 The real CLI invocation uses `workspace-write` sandbox and `on-request`
 approval. `danger-full-access`, sandbox bypass flags, automatic commits,
 automatic merges, and unrestricted file scope are not used.
+
+Codex CLI exec timeout is a blocking runtime failure. Timeout command logs
+record `timeout_type`, elapsed time, JSONL event counts, last observed JSONL
+event type, whether an approval request was observed, whether network was
+requested, and whether the process tree was killed. Timeout results keep
+running the main-worktree fingerprint post-check, do not produce accepted
+MergeCandidate artifacts, and are rejected by the Review Worker with
+`codex:timeout`.
 
 ## Docker Sandbox Foundation
 
@@ -128,6 +135,10 @@ merge, auto-merge, auto-push, missing human approval, or any state other than
 - A previous real Codex multi-file validation changed the main worktree outside
   the task worktree. That result is not accepted; the main-worktree fingerprint
   guard is a fail-closed control and must be revalidated before any merge stage.
+- A later real Codex multi-file validation kept the main-worktree fingerprint
+  stable but timed out during CLI exec. The current recovery path is to reduce
+  real task complexity and preserve timeout diagnostics, not to increase
+  permissions or relax isolation.
 - The smoke test does not expose every failure mode of a production Coding
   Worker.
 - The Docker sandbox foundation is not a production-grade arbitrary-code

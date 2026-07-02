@@ -1,17 +1,27 @@
 from __future__ import annotations
 
 import subprocess
+import sys
 from dataclasses import replace
 from pathlib import Path
 
 import pytest
 
-from ai_org.adapters.codex.clients import DryRunCodexClient, LocalCodexCliClient, MockCodexClient
+from ai_org.adapters.codex.clients import (
+    CodexTimeoutExpired,
+    DryRunCodexClient,
+    LocalCodexCliClient,
+    MockCodexClient,
+    _run_subprocess,
+)
 from ai_org.adapters.codex.policy import CodingWorkerPolicy
 from ai_org.adapters.codex.worker import CodexWorker
+from ai_org.adapters.memory.repositories import InMemoryRepository
 from ai_org.adapters.sandbox import MockSandboxRunner
-from ai_org.adapters.workers.mock import MockReviewWorker
+from ai_org.adapters.workers.mock import DefaultWorkerRegistry, MockReviewWorker
+from ai_org.application.service import ProjectApplicationService
 from ai_org.domain.enums import AgentResultStatus, ReviewDecision, RiskLevel, TaskStatus, WorkerType
+from ai_org.domain.errors import ValidationFailure
 from ai_org.domain.models import Task
 from ai_org.ports.codex import CodexTaskRequest, CodexTaskResult, CommandLogEntry
 from ai_org.ports.workers import WorkerRequest
@@ -355,7 +365,63 @@ def test_local_cli_client_timeout_is_failed_result(
 
     assert result.status == AgentResultStatus.FAILED
     assert result.metadata["blocked_reason"] == "CODEX_CLI_TIMEOUT"
+    assert result.metadata["timeout_type"] == "CODEX_CLI_TIMEOUT"
+    assert result.metadata["timeout_seconds"] == 5
+    assert result.metadata["timeout_process_killed"] is True
+    assert result.metadata["timeout_process_tree_killed"] is True
+    assert result.metadata["jsonl_event_count"] == 3
+    assert result.metadata["last_jsonl_event_type"] == "error"
+    assert result.metadata["approval_requested"] is True
     assert result.command_logs[-1].timed_out is True
+    assert result.command_logs[-1].timeout_type == "CODEX_CLI_TIMEOUT"
+    assert result.command_logs[-1].process_killed is True
+    assert result.command_logs[-1].process_tree_killed is True
+    assert result.command_logs[-1].jsonl_event_count == 3
+    assert result.command_logs[-1].last_jsonl_event_type == "error"
+    assert result.command_logs[-1].approval_requested is True
+    assert "codex_jsonl_events=3" in result.command_logs[-1].stdout_summary
+    assert "SECRET_VALUE" not in result.command_logs[-1].stderr_summary
+
+
+def test_deterministic_validation_blocks_codex_timeout_result() -> None:
+    service = ProjectApplicationService(
+        InMemoryRepository(),
+        DefaultWorkerRegistry(workers={}, review_worker=MockReviewWorker()),
+    )
+    result = AgentResult(
+        task_id="task_codex",
+        status=AgentResultStatus.FAILED,
+        summary="Codex CLI multi-file task execution timed out.",
+        artifacts=[],
+        evidence=[],
+        tests_run=[WorkerTestRecord(name="codex-real-cli", status="failed")],
+        assumptions=[],
+        risks=[],
+        unresolved_questions=[],
+        metadata={
+            "coding_worker": True,
+            "blocked_reason": "CODEX_CLI_TIMEOUT",
+            "timeout_type": "CODEX_CLI_TIMEOUT",
+        },
+    )
+
+    with pytest.raises(ValidationFailure, match="timed out"):
+        service.deterministic_validation(result)
+
+
+def test_run_subprocess_timeout_kills_process_tree(tmp_path: Path) -> None:
+    script = (
+        "import subprocess, sys, time; "
+        "subprocess.Popen([sys.executable, '-c', 'import time; time.sleep(30)']); "
+        "time.sleep(30)"
+    )
+
+    with pytest.raises(CodexTimeoutExpired) as exc_info:
+        _run_subprocess([sys.executable, "-c", script], tmp_path, None, 1)
+
+    assert exc_info.value.process_killed is True
+    assert exc_info.value.process_tree_killed is True
+    assert exc_info.value.elapsed_ms >= 1000
 
 
 def test_local_cli_client_failed_exec_is_failed_result(
@@ -411,11 +477,10 @@ def test_local_multi_file_task_policy_cannot_widen_file_scope() -> None:
     )
 
     assert policy.allowed_files == [
-        "docs/MERGE_APPROVAL.md",
         "src/ai_org/adapters/codex/merge_candidate.py",
         "tests/unit/test_codex_merge_candidate.py",
     ]
-    assert policy.file_violations(["docs/MERGE_APPROVAL.md"]) == []
+    assert policy.file_violations(["docs/MERGE_APPROVAL.md"]) == ["docs/MERGE_APPROVAL.md"]
     assert policy.file_violations(["docs/forbidden.md"]) == ["docs/forbidden.md"]
     assert policy.file_violations(["scripts/run.ps1"]) == ["scripts/run.ps1"]
 
@@ -601,7 +666,6 @@ def test_codex_worker_creates_merge_candidate_without_merging(
 
     assert result.status == AgentResultStatus.SUCCEEDED
     assert result.metadata["changed_files"] == [
-        "docs/MERGE_APPROVAL.md",
         "src/ai_org/adapters/codex/merge_candidate.py",
         "tests/unit/test_codex_merge_candidate.py",
     ]
@@ -619,6 +683,34 @@ def test_codex_worker_creates_merge_candidate_without_merging(
     assert len(merge_artifacts) == 1
     assert merge_artifacts[0].uri.startswith("artifact://codex/task_codex/attempt-1/")
     assert _git(repo, "status", "--short").strip() == ""
+
+
+def test_codex_worker_timeout_keeps_main_fingerprint_and_no_merge_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(timeout_on_exec=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+    before = worker.worktree_service.status_fingerprint()
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert worker.worktree_service.status_fingerprint() == before
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_TIMEOUT"
+    assert result.metadata["timeout_type"] == "CODEX_CLI_TIMEOUT"
+    assert result.metadata["changed_files"] == []
+    assert "merge_candidate" not in result.metadata
+    assert "merge_candidate_status" not in result.metadata
+    assert result.metadata["command_logs"][-1]["timeout_type"] == "CODEX_CLI_TIMEOUT"
+    assert result.metadata["command_logs"][-1]["process_tree_killed"] is True
+    assert report.decision == ReviewDecision.REJECTED
+    assert "codex:timeout" in report.defects
 
 
 def test_multi_file_task_does_not_expose_main_repo_path_in_prompt_logs_or_artifacts(
@@ -669,7 +761,6 @@ def test_codex_worker_rejects_main_worktree_modification(
     assert result.metadata["main_worktree_modified"] is True
     assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
     assert result.metadata["changed_files"] == [
-        "docs/MERGE_APPROVAL.md",
         "src/ai_org/adapters/codex/merge_candidate.py",
         "tests/unit/test_codex_merge_candidate.py",
     ]
@@ -1063,11 +1154,20 @@ class FakeCodexRunner:
             )
         if "exec" in command and command[0] == "codex":
             if self.timeout_on_exec:
-                raise subprocess.TimeoutExpired(
+                raise CodexTimeoutExpired(
                     command,
                     timeout_seconds,
-                    output="partial stdout",
+                    output=(
+                        '{"type":"thread.started","thread_id":"thread_test"}\n'
+                        '{"type":"item.completed","item":{"type":"agent_message",'
+                        '"text":"need approval?"}}\n'
+                        '{"type":"error","message":"request timed out"}\n'
+                    ),
                     stderr="partial stderr with SECRET_VALUE",
+                    elapsed_ms=timeout_seconds * 1000,
+                    process_killed=True,
+                    process_tree_killed=True,
+                    cleanup_error="",
                 )
             if self.write_forbidden_file:
                 target = cwd / "docs" / "forbidden.md"
@@ -1075,9 +1175,6 @@ class FakeCodexRunner:
                 target.write_text("forbidden change\n", encoding="utf-8")
             if self.write_multi_file_task:
                 files = {
-                    "docs/MERGE_APPROVAL.md": (
-                        "# Merge Approval\n\nManual marker: human-approval-only.\n"
-                    ),
                     "src/ai_org/adapters/codex/merge_candidate.py": (
                         "MERGE_CANDIDATE_MANUAL_TASK_MARKER = 'human-approval-only'\n\n"
                         "def build_merge_candidate_summary(changed_files, diff_summary, "

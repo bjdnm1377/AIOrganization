@@ -49,9 +49,9 @@
 - `local_code_task` policy narrows writes to the fixed smoke helper and unit
   test files, and forbids workflow, dependency, migration, docs, scripts,
   repository-control, and credential-bearing files.
-- `local_multi_file_task` policy narrows writes to `docs/MERGE_APPROVAL.md`,
-  `src/ai_org/adapters/codex/merge_candidate.py`, and
-  `tests/unit/test_codex_merge_candidate.py`, and forbids workflow,
+- `local_multi_file_task` policy narrows writes to
+  `src/ai_org/adapters/codex/merge_candidate.py` and
+  `tests/unit/test_codex_merge_candidate.py`, and forbids docs, workflow,
   dependency, migration, script, repository-control, and credential-bearing
   files.
 - MergeCandidate summaries explicitly record no merge, no auto-merge, no
@@ -82,6 +82,10 @@
   controlled manual code tasks with fixed file scopes and no automatic merge.
 - A prior real Codex multi-file validation modified the main worktree. That run
   is blocked and must not be treated as an accepted MergeCandidate.
+- A later real Codex multi-file validation kept the main-worktree fingerprint
+  stable but timed out during CLI exec. Timeout is blocked as
+  `CODEX_CLI_TIMEOUT`; it cannot create an accepted MergeCandidate and must not
+  be solved by increasing Codex permissions.
 - MergeCandidate output can be misleading if reviewed out of context; later
   MergeService work must re-check policy, tests, and human approval before any
   branch operation.

@@ -165,10 +165,13 @@ def _review_coding_result(
     policy_violations = _string_list(result.metadata.get("policy_violations"))
     failed_tests = [record.name for record in result.tests_run if record.status == "failed"]
     not_configured = result.status == AgentResultStatus.NOT_CONFIGURED
-    if policy_violations or not_configured:
+    runtime_blocked = result.metadata.get("blocked_reason") == "CODEX_CLI_TIMEOUT"
+    if policy_violations or not_configured or runtime_blocked:
         defects = policy_violations.copy()
         if not_configured:
             defects.append("codex:not_configured")
+        if runtime_blocked:
+            defects.append("codex:timeout")
         return ReviewReport(
             task_id=task.task_id,
             decision=ReviewDecision.REJECTED,

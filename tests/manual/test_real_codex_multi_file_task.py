@@ -20,7 +20,6 @@ from ai_org.protocols.schemas import CreateProjectRequest, TaskSpec
 pytestmark = pytest.mark.manual_codex_multi_file_task
 
 ALLOWED_FILES = [
-    "docs/MERGE_APPROVAL.md",
     "src/ai_org/adapters/codex/merge_candidate.py",
     "tests/unit/test_codex_merge_candidate.py",
 ]
@@ -72,22 +71,19 @@ def test_real_codex_multi_file_task_creates_merge_candidate_for_human_approval()
                 TaskSpec(
                     title="Update MergeCandidate summary path",
                     objective=(
-                        "Modify exactly these three files and no other files: "
-                        "docs/MERGE_APPROVAL.md, "
+                        "Modify exactly these two files and no other files: "
                         "src/ai_org/adapters/codex/merge_candidate.py, "
                         "tests/unit/test_codex_merge_candidate.py. "
-                        "If any file is absent in the task worktree, create it instead of "
-                        "trying to update a missing file. "
-                        "Make a minimal marker-only multi-file change: add "
+                        "Make a minimal marker-only change. Add "
                         "MERGE_CANDIDATE_MANUAL_TASK_MARKER = 'human-approval-only' "
-                        "to the module, add or update one unit test that imports that "
-                        "constant and asserts it equals 'human-approval-only', and add "
-                        "one documentation sentence containing 'human-approval-only'. "
-                        "Do not rewrite unrelated logic. Keep build_merge_candidate_summary "
-                        "side-effect-free: no file I/O, no shell, no network, no environment "
-                        "reads. Preserve merge_performed=False, auto_merge=False, "
-                        "auto_push=False, human_approval_required=True, and "
-                        "approval_state='waiting_merge_approval'."
+                        "to the module. Add or update one unit test that imports the "
+                        "constant and asserts it equals 'human-approval-only'. "
+                        "Do not edit docs, config, workflows, dependencies, database, API, "
+                        "or scripts. Do not implement MergeService. Do not run long commands. "
+                        "Keep build_merge_candidate_summary side-effect-free and preserve "
+                        "merge_performed=False, auto_merge=False, auto_push=False, "
+                        "human_approval_required=True, and "
+                        "approval_state='waiting_merge_approval'. Stop after these edits."
                     ),
                     worker_type=WorkerType.CODEX,
                     max_attempts=1,

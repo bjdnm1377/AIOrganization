@@ -13,6 +13,12 @@ main worktree fingerprint to remain identical before and after real Codex
 execution; otherwise the result is `FAILED` with
 `MAIN_WORKTREE_MODIFIED` and no passing merge candidate is produced.
 
+A later revalidation attempt kept the main worktree fingerprint identical but
+the Codex CLI exec command timed out before producing a task-worktree diff. That
+result is also not accepted. Timeout is classified as `CODEX_CLI_TIMEOUT`, does
+not create an accepted MergeCandidate, and must be resolved before any merge
+approval implementation begins.
+
 ## MergeCandidate Summary
 
 `build_merge_candidate_summary()` shapes structured data for a candidate:
@@ -33,9 +39,12 @@ worktrees, or deploy.
 ## Workflow Boundary
 
 For `codex_mode="local_multi_file_task"`, `CodexWorker` may create a
-`merge-candidate` artifact after the task worktree diff is collected. The
-independent Review Worker must accept the Coding Worker result before the
-application writes a `merge_candidate.created` audit event.
+`merge-candidate` artifact after the task worktree diff is collected. The real
+Codex task is currently limited to `src/ai_org/adapters/codex/merge_candidate.py`
+and `tests/unit/test_codex_merge_candidate.py`; documentation updates stay
+outside the real Codex task. The independent Review Worker must accept the
+Coding Worker result before the application writes a `merge_candidate.created`
+audit event.
 
 The main branch remains unchanged. The task worktree remains a manual review
 surface. Later stages may add a `MergeService`, but it must require explicit
@@ -50,11 +59,10 @@ MergeCandidate artifacts are evidence for review only.
 
 The current multi-file task policy allows only:
 
-- `docs/MERGE_APPROVAL.md`
 - `src/ai_org/adapters/codex/merge_candidate.py`
 - `tests/unit/test_codex_merge_candidate.py`
 
-Repository control files, dependency files, migrations, CI workflows, scripts,
-environment files, credentials, `AGENTS.md`, `README.md`, and production config
-are outside this task scope. If any such file changes, the result is rejected
-before merge approval can be considered.
+Documentation files, repository control files, dependency files, migrations, CI
+workflows, scripts, environment files, credentials, `AGENTS.md`, `README.md`,
+and production config are outside this task scope. If any such file changes,
+the result is rejected before merge approval can be considered.

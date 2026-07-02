@@ -70,6 +70,11 @@ The sandbox test profile sets `PYTHONDONTWRITEBYTECODE=1` and does not execute
 task-provided shell commands. Real Codex is invoked by the local CLI client in
 the task worktree, not inside Docker.
 
+The current controlled multi-file sandbox test validates only the generated
+MergeCandidate module and its unit test. Documentation files are outside the
+real Codex multi-file allowed scope and are not required by this fixed sandbox
+command.
+
 ## Test Coverage
 
 Unit tests cover policy defaults, privileged rejection, network rejection, host
