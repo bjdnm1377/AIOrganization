@@ -9,12 +9,14 @@ import pytest
 from ai_org.adapters.codex.clients import DryRunCodexClient, LocalCodexCliClient, MockCodexClient
 from ai_org.adapters.codex.policy import CodingWorkerPolicy
 from ai_org.adapters.codex.worker import CodexWorker
+from ai_org.adapters.sandbox import MockSandboxRunner
 from ai_org.adapters.workers.mock import MockReviewWorker
 from ai_org.domain.enums import AgentResultStatus, ReviewDecision, RiskLevel, TaskStatus, WorkerType
 from ai_org.domain.models import Task
 from ai_org.ports.codex import CodexTaskRequest, CodexTaskResult, CommandLogEntry
 from ai_org.ports.workers import WorkerRequest
 from ai_org.protocols.schemas import WorkerTestRecord
+from ai_org.security import redact, sensitive_pattern_count
 
 
 def test_mock_codex_worker_captures_diff_logs_and_artifacts(tmp_path: Path) -> None:
@@ -101,6 +103,43 @@ def test_local_cli_client_does_not_call_runner_without_opt_in(tmp_path: Path) ->
     assert runner.calls == []
 
 
+def test_local_code_task_client_does_not_call_runner_without_opt_in(tmp_path: Path) -> None:
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_code_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_code_task"
+    assert result.metadata["blocked_reason"] == "REAL_CODEX_CODE_TASK_OPT_IN_REQUIRED"
+    assert runner.calls == []
+
+
+def test_local_code_task_client_reports_missing_cli_when_opted_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(command="ai-org-missing-codex-command"),
+    )
+    task = _task(metadata={"codex_mode": "local_code_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_code_task"
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
+    assert result.metadata["no_real_codex_started"] is True
+
+
 def test_local_cli_client_uses_restricted_exec_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -151,6 +190,40 @@ def test_local_cli_client_uses_restricted_exec_command(
     assert "session_id" not in result.metadata
 
 
+def test_local_code_task_client_uses_restricted_exec_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_code_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create only allowed helper and test files without sk-test-secret.",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    exec_call = runner.calls[-1]
+    command_value = exec_call["command"]
+    assert isinstance(command_value, list)
+    assert all(isinstance(part, str) for part in command_value)
+    command = [part for part in command_value if isinstance(part, str)]
+    assert exec_call["cwd"] == tmp_path
+    assert "--sandbox" in command
+    assert "workspace-write" in command
+    assert "--ask-for-approval" in command
+    assert "on-request" in command
+    assert "--cd" in command
+    assert str(tmp_path) in command
+    assert "sk-test-secret" not in " ".join(command)
+    assert result.metadata["codex_mode"] == "local_code_task"
+    assert result.metadata["no_real_codex_started"] is False
+    assert result.metadata["codex_thread_observed"] is True
+
+
 def test_local_cli_client_blocks_dangerous_sandbox(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -159,6 +232,31 @@ def test_local_cli_client_blocks_dangerous_sandbox(
     client = LocalCodexCliClient(runner=runner)
     request = CodexTaskRequest(
         task=_task(metadata={"codex_mode": "local_cli", "codex_sandbox": "danger-full-access"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_POLICY_BLOCKED"
+    assert runner.calls == []
+
+
+def test_local_code_task_client_blocks_dangerous_sandbox(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(
+            metadata={
+                "codex_mode": "local_code_task",
+                "codex_sandbox": "danger-full-access",
+            }
+        ),
         attempt_number=1,
         worktree_path=tmp_path,
         prompt="do not run",
@@ -220,6 +318,22 @@ def test_local_cli_policy_cannot_widen_smoke_file_scope() -> None:
     assert policy.allowed_files == ["smoke/**"]
     assert policy.file_violations(["notes.txt"]) == ["notes.txt"]
     assert policy.file_violations(["smoke/codex_worker_smoke.txt"]) == []
+
+
+def test_local_code_task_policy_cannot_widen_file_scope() -> None:
+    policy = CodingWorkerPolicy.from_task(
+        _task(metadata={"codex_mode": "local_code_task", "allowed_files": ["**"]})
+    )
+
+    assert policy.allowed_files == [
+        "src/ai_org/adapters/codex/smoke_helpers.py",
+        "tests/unit/test_codex_smoke_helpers.py",
+    ]
+    assert policy.file_violations(["src/ai_org/adapters/codex/clients.py"]) == [
+        "src/ai_org/adapters/codex/clients.py"
+    ]
+    assert policy.file_violations(["docs/CODEX_WORKER.md"]) == ["docs/CODEX_WORKER.md"]
+    assert policy.file_violations(["src/ai_org/adapters/codex/smoke_helpers.py"]) == []
 
 
 def test_local_cli_doctor_timeout_fails_closed(
@@ -292,6 +406,120 @@ def test_review_rejects_forbidden_file_violation(tmp_path: Path) -> None:
 
     assert ".github/workflows/verification.yml" in result.metadata["forbidden_file_violations"]
     assert report.decision == ReviewDecision.REJECTED
+
+
+def test_review_rejects_local_code_task_forbidden_file_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_forbidden_file=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_code_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert "docs/forbidden.md" in result.metadata["forbidden_file_violations"]
+    assert report.decision == ReviewDecision.REJECTED
+
+
+def test_codex_worker_records_sandbox_test_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    sandbox_runner = MockSandboxRunner()
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner()),
+        sandbox_runner=sandbox_runner,
+    )
+    task = _task(
+        metadata={
+            "codex_mode": "local_code_task",
+            "sandbox_test_profile": "real_code_task_smoke",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.metadata["sandbox_tests_enabled"] is True
+    assert result.metadata["sandbox_test_status"] == "SUCCEEDED"
+    assert result.tests_run[-1].name == "sandbox-real-code-task"
+    assert result.tests_run[-1].status == "passed"
+    assert result.metadata["command_logs"][-1]["command"] == "sandbox.test"
+    assert len(sandbox_runner.requests) == 1
+    assert sandbox_runner.requests[0].env == {"PYTHONDONTWRITEBYTECODE": "1"}
+
+
+def test_codex_worker_does_not_run_code_task_sandbox_test_without_opt_in(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    sandbox_runner = MockSandboxRunner()
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner()),
+        sandbox_runner=sandbox_runner,
+    )
+    task = _task(
+        metadata={
+            "codex_mode": "local_code_task",
+            "sandbox_test_profile": "real_code_task_smoke",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata.get("sandbox_tests_enabled") is None
+    assert sandbox_runner.requests == []
+
+
+def test_codex_worker_does_not_run_code_task_sandbox_test_for_mock_mode(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    sandbox_runner = MockSandboxRunner()
+    worker = CodexWorker(repo, client=MockCodexClient(), sandbox_runner=sandbox_runner)
+    task = _task(
+        metadata={
+            "codex_mode": "mock",
+            "mock_output_file": "src/ai_org/adapters/codex/smoke_helpers.py",
+            "allowed_files": ["src/ai_org/adapters/codex/smoke_helpers.py"],
+            "sandbox_test_profile": "real_code_task_smoke",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    assert result.metadata.get("sandbox_tests_enabled") is None
+    assert sandbox_runner.requests == []
+
+
+def test_codex_worker_marks_missing_sandbox_runner_as_failed_test(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_CODE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(repo, client=LocalCodexCliClient(runner=FakeCodexRunner()))
+    task = _task(
+        metadata={
+            "codex_mode": "local_code_task",
+            "sandbox_test_profile": "real_code_task_smoke",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert result.metadata["sandbox_test_status"] == "BLOCKED"
+    assert result.tests_run[-1].status == "failed"
+    assert report.decision == ReviewDecision.REWORK_REQUIRED
 
 
 def test_task_metadata_cannot_clear_system_forbidden_files(tmp_path: Path) -> None:
@@ -373,7 +601,14 @@ def test_prompt_and_diff_artifacts_are_redacted(tmp_path: Path) -> None:
     repo = _git_repo(tmp_path / "repo")
     worker = CodexWorker(repo, client=MockCodexClient())
     task = _task(metadata={"codex_mode": "mock"})
-    task = replace(task, objective="Do not store " + "SECRET" + "_VALUE in artifacts")
+    fake_pat = "github_pat_" + ("A" * 24)
+    absolute_path = "C:\\Users\\Example\\secret.txt"
+    task = replace(
+        task,
+        objective=(
+            "Do not store " + "SECRET" + "_VALUE in artifacts; " + fake_pat + "; " + absolute_path
+        ),
+    )
 
     result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
 
@@ -382,10 +617,33 @@ def test_prompt_and_diff_artifacts_are_redacted(tmp_path: Path) -> None:
     diff = (artifact_dir / "diff.patch").read_text(encoding="utf-8")
     assert "SECRET_VALUE" not in prompt
     assert "SECRET_VALUE" not in diff
+    assert fake_pat not in prompt
+    assert fake_pat not in diff
+    assert absolute_path not in prompt
+    assert absolute_path not in diff
     assert result.metadata["policy_violations"] == ["diff:secret_pattern_detected"]
     assert all(not artifact.uri.startswith("file:") for artifact in result.artifacts)
     assert result.metadata["worktree_path"].startswith("worktree://")
     assert str(repo) not in str(result.metadata["command_logs"])
+
+
+def test_redact_masks_paths_and_common_token_shapes() -> None:
+    fake_pat = "github_pat_" + ("A" * 24)
+    fake_openai_key = "sk-" + ("B" * 24)
+    payload = (
+        f"path=C:\\Users\\Example\\secret.txt pat={fake_pat} "
+        f"key={fake_openai_key} auth=Bearer abcdefgh12345678"
+    )
+
+    redacted = redact(payload)
+
+    assert isinstance(redacted, str)
+    assert fake_pat not in redacted
+    assert fake_openai_key not in redacted
+    assert "abcdefgh12345678" not in redacted
+    assert "C:\\Users\\Example\\secret.txt" not in redacted
+    assert "<path>" in redacted
+    assert sensitive_pattern_count(payload) >= 3
 
 
 def _task(metadata: dict[str, object] | None = None) -> Task:
@@ -471,12 +729,14 @@ class FakeCodexRunner:
         timeout_on_doctor: bool = False,
         doctor_returncode: int = 0,
         doctor_stdout: str | None = None,
+        write_forbidden_file: bool = False,
     ) -> None:
         self.exec_returncode = exec_returncode
         self.timeout_on_exec = timeout_on_exec
         self.timeout_on_doctor = timeout_on_doctor
         self.doctor_returncode = doctor_returncode
         self.doctor_stdout = doctor_stdout
+        self.write_forbidden_file = write_forbidden_file
         self.calls: list[dict[str, object]] = []
 
     def __call__(
@@ -513,6 +773,10 @@ class FakeCodexRunner:
                     output="partial stdout",
                     stderr="partial stderr with SECRET_VALUE",
                 )
+            if self.write_forbidden_file:
+                target = cwd / "docs" / "forbidden.md"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("forbidden change\n", encoding="utf-8")
             escaped_path = str(cwd / "smoke" / "escaped.txt").replace("\\", "\\\\")
             return subprocess.CompletedProcess(
                 command,

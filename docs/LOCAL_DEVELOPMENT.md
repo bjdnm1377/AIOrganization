@@ -72,8 +72,7 @@ When local Python 3.12 or Docker is unavailable, use the repository workflow:
 The workflow provisions Python 3.12 and a PostgreSQL service container, verifies
 the lock file, runs Alembic, exercises PostgreSQL checkpoint recovery, runs the
 full test suite, and produces supply-chain reports. Until that workflow actually
-passes, the project remains blocked from entering the Codex Coding Worker
-isolation stage.
+passes, the project remains blocked from promoting the next stage.
 
 ## Manual Real Codex Smoke
 
@@ -89,11 +88,25 @@ The smoke test runs inside a temporary Git worktree, allows only `smoke/**`, and
 does not commit or merge output. Default `pytest` collection excludes
 `tests/manual`; the smoke test runs only when this file is invoked explicitly.
 
+## Manual Real Codex Small Code Task
+
+The small code-task test is also excluded from default pytest and CI. It requires
+an authenticated local Codex CLI session, Docker, and separate explicit opt-in:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_CODE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_code_task.py -q
+```
+
+The task is limited to the fixed smoke helper and unit-test files, runs in a
+task worktree, records sanitized artifacts, uses a fixed DockerSandboxRunner
+validation command, and does not commit, merge, push, or modify the main branch.
+
 ## No Secrets Required
 
 Default tests and CI must not require `OPENAI_API_KEY`, Codex credentials, cloud
-accounts, or paid services. The manual real Codex smoke test uses the local
-Codex CLI session only when explicitly opted in.
+accounts, or paid services. Manual real Codex tests use the local Codex CLI
+session only when explicitly opted in.
 
 ## Supply Chain Reports
 

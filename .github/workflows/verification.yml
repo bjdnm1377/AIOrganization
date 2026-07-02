@@ -31,6 +31,7 @@ jobs:
     env:
       PYTHONUTF8: "1"
       AI_ORG_ENABLE_REAL_CODEX_SMOKE: "false"
+      AI_ORG_ENABLE_REAL_CODEX_CODE_TASK: "false"
       AI_ORG_USE_EXISTING_POSTGRES: "true"
       AI_ORG_POSTGRES_PASSWORD: ai_org_ci_test_password # pragma: allowlist secret
       AI_ORG_DATABASE_URL: postgresql+psycopg://ai_org_app:ai_org_ci_test_password@localhost:5432/ai_org?connect_timeout=5 # pragma: allowlist secret
@@ -181,6 +182,7 @@ jobs:
             FINAL_CI_VERIFICATION_REPORT.md CI_PENDING_REPORT.md CI_BLOCKED_REPORT.md \
             CODEX_WORKER_ACCEPTANCE_REPORT.md CODEX_REAL_SMOKE_TEST_REPORT.md \
             DOCKER_SANDBOX_ACCEPTANCE_REPORT.md \
+            CODEX_REAL_CODE_TASK_REPORT.md \
             CI_FAILED_REPORT.md \
             pyproject.toml requirements.in requirements-lock.txt docker-compose.yml \
             alembic.ini .editorconfig .gitignore \

@@ -33,6 +33,8 @@
   branch.
 - Local real Codex CLI smoke execution requires explicit
   `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` opt-in.
+- Local real Codex CLI small code-task execution requires separate explicit
+  `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` opt-in.
 - Local real Codex CLI smoke execution uses `workspace-write` sandbox,
   `on-request` approval, and `--cd <worktree>`.
 - Coding policy detects forbidden file changes, disallowed commands, suspicious
@@ -41,6 +43,9 @@
 - `local_cli` smoke policy narrows default writes to `smoke/**` and forbids
   source, tests, docs, workflow, dependency, migration, and repository-control
   files.
+- `local_code_task` policy narrows writes to the fixed smoke helper and unit
+  test files, and forbids workflow, dependency, migration, docs, scripts,
+  repository-control, and credential-bearing files.
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.
@@ -55,7 +60,9 @@
 
 ## Known Risks
 
-- Real Codex runtime is implemented only for a controlled local smoke test.
+- Real Codex runtime is implemented only for a controlled local smoke test and
+  one controlled manual small code task with fixed file scope and no automatic
+  merge.
 - Docker sandboxing is implemented only as a foundation with fixed safe command
   tests; production arbitrary-code execution is not implemented.
 - Worktree cleanup is manual in this stage.

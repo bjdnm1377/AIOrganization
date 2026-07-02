@@ -26,6 +26,7 @@ $paths = @(
     "FINAL_CI_VERIFICATION_REPORT.md",
     "CODEX_WORKER_ACCEPTANCE_REPORT.md",
     "CODEX_REAL_SMOKE_TEST_REPORT.md",
+    "CODEX_REAL_CODE_TASK_REPORT.md",
     "DOCKER_SANDBOX_ACCEPTANCE_REPORT.md",
     "CI_PENDING_REPORT.md",
     "CI_BLOCKED_REPORT.md",
@@ -44,4 +45,14 @@ $output = & $Python -m detect_secrets scan -n @paths `
     --exclude-files "(?i)(__pycache__|\.pyc$|\.egg-info|^reports|^\.venv|^\.git)"
 $code = $LASTEXITCODE
 $output | Set-Content -Encoding utf8 reports\detect-secrets-report.json
-exit $code
+if ($code -ne 0) { exit $code }
+
+$scan = Get-Content -Raw reports\detect-secrets-report.json | ConvertFrom-Json
+$findings = 0
+if ($null -ne $scan.results) {
+    foreach ($property in $scan.results.PSObject.Properties) {
+        $findings += @($property.Value).Count
+    }
+}
+Write-Host "detect-secrets findings: $findings"
+if ($findings -ne 0) { exit 1 }

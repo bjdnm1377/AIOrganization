@@ -16,6 +16,9 @@ Safety controls:
 - The main working tree is not modified by Mock/DryRun Codex task file changes.
 - The main working tree is not modified by the manual real Codex CLI smoke test;
   Codex runs in the task worktree with `--cd <worktree>`.
+- The main working tree is not modified by the manual real Codex small code
+  task; changed files are collected from the task worktree and reviewed without
+  automatic merge.
 - No automatic merge is performed.
 - API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
   URIs instead of local absolute paths.
@@ -33,6 +36,18 @@ The smoke-stage policy forbids changes to source, tests, docs, dependency
 files, workflow files, migrations, `AGENTS.md`, `README.md`, `.env*`, and
 `.git/**`. Any forbidden change is reported by `DiffCollector` and rejected by
 the independent Review Worker.
+
+## Real Codex Small Code Task Scope
+
+For `codex_mode="local_code_task"`, the intended task may create or update only:
+
+- `src/ai_org/adapters/codex/smoke_helpers.py`
+- `tests/unit/test_codex_smoke_helpers.py`
+
+The policy forbids repository control files, workflow files, dependency files,
+migrations, docs, `AGENTS.md`, `README.md`, `docker-compose.yml`, `scripts/**`,
+and `.env*`. The task runs in a dedicated worktree and is not committed, merged,
+or pushed automatically.
 
 ## Cleanup
 

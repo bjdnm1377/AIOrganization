@@ -18,6 +18,11 @@ DEFAULT_FORBIDDEN_FILES = [
 
 REAL_CLI_DEFAULT_ALLOWED_FILES = ["smoke/**"]
 
+REAL_CODE_TASK_ALLOWED_FILES = [
+    "src/ai_org/adapters/codex/smoke_helpers.py",
+    "tests/unit/test_codex_smoke_helpers.py",
+]
+
 REAL_CLI_FORBIDDEN_FILES = [
     ".git/**",
     ".github/**",
@@ -32,6 +37,22 @@ REAL_CLI_FORBIDDEN_FILES = [
     "docs/**",
     "AGENTS.md",
     "README.md",
+]
+
+REAL_CODE_TASK_FORBIDDEN_FILES = [
+    ".git/**",
+    ".github/**",
+    ".env",
+    ".env.*",
+    "requirements-lock.txt",
+    "requirements.in",
+    "pyproject.toml",
+    "alembic/**",
+    "docs/**",
+    "AGENTS.md",
+    "README.md",
+    "docker-compose.yml",
+    "scripts/**",
 ]
 
 
@@ -53,17 +74,18 @@ class CodingWorkerPolicy:
     def from_task(cls, task: Task) -> CodingWorkerPolicy:
         metadata = task.metadata
         mode = _string(metadata.get("codex_mode"), default="dry_run")
-        default_allowed_files = REAL_CLI_DEFAULT_ALLOWED_FILES if mode == "local_cli" else ["**"]
-        default_allowed_commands = ["codex"] if mode == "local_cli" else []
+        default_allowed_files = _default_allowed_files(mode)
+        default_allowed_commands = ["codex"] if _is_real_cli_mode(mode) else []
         forbidden_files = [
             *DEFAULT_FORBIDDEN_FILES,
             *(REAL_CLI_FORBIDDEN_FILES if mode == "local_cli" else []),
+            *(REAL_CODE_TASK_FORBIDDEN_FILES if mode == "local_code_task" else []),
             *_string_list(metadata.get("forbidden_files"), default=[]),
         ]
         return cls(
             mode=mode,
             allowed_files=default_allowed_files
-            if mode == "local_cli"
+            if _is_real_cli_mode(mode)
             else _string_list(metadata.get("allowed_files"), default=default_allowed_files),
             forbidden_files=_deduplicate(forbidden_files),
             allowed_commands=_string_list(
@@ -147,3 +169,15 @@ def _deduplicate(values: list[str]) -> list[str]:
         if value not in deduplicated:
             deduplicated.append(value)
     return deduplicated
+
+
+def _default_allowed_files(mode: str) -> list[str]:
+    if mode == "local_cli":
+        return list(REAL_CLI_DEFAULT_ALLOWED_FILES)
+    if mode == "local_code_task":
+        return list(REAL_CODE_TASK_ALLOWED_FILES)
+    return ["**"]
+
+
+def _is_real_cli_mode(mode: str) -> bool:
+    return mode in {"local_cli", "local_code_task"}

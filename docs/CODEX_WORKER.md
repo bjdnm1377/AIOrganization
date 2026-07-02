@@ -12,7 +12,7 @@ Implemented clients:
 - `MockCodexClient`: deterministic local file change simulation for tests.
 - `DryRunCodexClient`: no-op dry run that records no real Codex process.
 - `LocalCodexCliClient`: optional local real Codex CLI smoke path. It returns
-  NOT_CONFIGURED unless `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` is set.
+  NOT_CONFIGURED unless the matching explicit opt-in is set.
 
 No default code path requires an OpenAI key, Codex login, paid service, or real
 shell execution. CI uses only Mock/DryRun and NOT_CONFIGURED behavior.
@@ -20,10 +20,14 @@ shell execution. CI uses only Mock/DryRun and NOT_CONFIGURED behavior.
 ## Optional Sandbox Hook
 
 `CodexWorker` can receive a `SandboxRunner` implementation. It only invokes the
-sandbox when task metadata contains `sandbox_smoke=True`; the command is a fixed
-health check and is recorded as `sandbox.health`. This hook verifies integration
-with the sandbox foundation without executing user-provided commands or calling
-real Codex inside Docker.
+sandbox when task metadata requests a fixed profile:
+
+- `sandbox_smoke=True` runs a fixed health check and records `sandbox.health`.
+- `sandbox_test_profile="real_code_task_smoke"` runs a fixed Python validation
+  command after a small real code task and records `sandbox.test`.
+
+These hooks verify integration with the sandbox foundation without executing
+user-provided commands or calling real Codex inside Docker.
 
 ## Local Real Codex CLI Smoke Path
 
@@ -46,6 +50,29 @@ task worktree. The independent Review Worker accepts the result only if
 `DiffCollector` reports no forbidden files, no disallowed commands, and no
 suspicious secret markers. Task metadata cannot widen the real CLI file scope
 beyond `smoke/**`.
+
+## Local Real Codex Small Code Task Path
+
+The small code-task path uses the same `LocalCodexCliClient` but requires the
+separate opt-in `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` and task metadata
+`codex_mode="local_code_task"`.
+
+Current allowed files are fixed in policy:
+
+- `src/ai_org/adapters/codex/smoke_helpers.py`
+- `tests/unit/test_codex_smoke_helpers.py`
+
+Task metadata cannot widen this scope. The code task still uses
+`workspace-write`, `on-request`, stdin prompt delivery, a task worktree,
+sanitized command logs, `DiffCollector`, logical artifact URIs, and independent
+Review Worker acceptance. It does not commit, merge, push, or change the main
+working tree.
+
+When `sandbox_test_profile="real_code_task_smoke"` is present,
+`DockerSandboxRunner` runs a fixed import/assert command inside the worktree. If
+no sandbox runner is configured, the result records
+`SANDBOX_RUNNER_NOT_CONFIGURED` and review requires rework instead of accepting
+the task.
 
 ## AgentResult Metadata
 
@@ -78,4 +105,5 @@ worktree URIs, not local file paths or artifact contents.
 - Codex MCP execution.
 - Automatic merge to the main branch.
 - Running real Codex or arbitrary user commands inside Docker.
+- Automatic commit of Codex output branches.
 - OpenHands or other external agent runtime.

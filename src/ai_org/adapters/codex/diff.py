@@ -6,7 +6,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from ai_org.adapters.codex.policy import CodingWorkerPolicy
-from ai_org.security import redact
+from ai_org.security import redact, sensitive_pattern_count
 
 
 @dataclass(frozen=True, slots=True)
@@ -118,8 +118,7 @@ def _binary_files(numstat: str) -> list[str]:
 
 
 def _secret_pattern_count(diff: str) -> int:
-    markers = ("sk-", "SECRET", "TOKEN", "PASSWORD")
-    return sum(diff.count(marker) for marker in markers)
+    return sensitive_pattern_count(diff)
 
 
 def _sanitize_text(value: str) -> str:

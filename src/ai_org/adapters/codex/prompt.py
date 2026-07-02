@@ -16,7 +16,7 @@ class CodingTaskPromptRenderer:
                 f"Objective: {_safe_text(task.objective)}",
                 "",
                 "## Constraints",
-                "- Do not call real LLMs or external paid services.",
+                "- Do not call external services outside the configured Codex worker runtime.",
                 "- Do not request or use API keys.",
                 "- Do not merge, push, or modify the main workspace.",
                 "- Work only inside the assigned Git worktree.",

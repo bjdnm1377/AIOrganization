@@ -42,6 +42,7 @@ markers = [
   "docker: requires Docker to be available",
   "postgres: requires PostgreSQL integration database",
   "manual_codex: requires explicit local Codex CLI smoke-test opt-in",
+  "manual_codex_code_task: requires explicit local Codex CLI code-task opt-in",
 ]
 
 [tool.ruff]

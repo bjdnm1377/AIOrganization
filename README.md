@@ -2,15 +2,14 @@
 
 AI Organization is a two-layer AI organization skeleton. It implements a minimal
 end-to-end workflow with deterministic Mock Workers, a Mock/DryRun Codex Coding
-Worker adapter, an explicitly opt-in local Codex CLI smoke path, a Docker
-sandbox foundation for fixed safe command tests, review, approvals, audit
-events, FastAPI query endpoints, PostgreSQL mappings, Alembic migrations, and
-strict LangGraph checkpoint serialization checks.
+Worker adapter, explicitly opt-in local Codex CLI smoke and small code-task
+paths, a Docker sandbox foundation for fixed safe command tests, review,
+approvals, audit events, FastAPI query endpoints, PostgreSQL mappings, Alembic
+migrations, and strict LangGraph checkpoint serialization checks.
 
 Default tests and CI do not call real LLMs, real Codex, OpenHands, Virtuoso,
 HFSS, MATLAB, Redis, Temporal, or user-provided untrusted code. Real Codex CLI
-execution exists only for the controlled smoke test and requires
-`AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`.
+execution exists only for controlled manual tests and requires explicit opt-in.
 
 ## Quick Start
 
@@ -61,6 +60,18 @@ on-request exec --json --cd <worktree> --color never -`, runs only inside a
 task-scoped Git worktree, records logical artifact URIs, and does not commit,
 merge, or modify the main branch.
 
+The small real code-task path is separately gated by
+`AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` and `codex_mode="local_code_task"`.
+It is limited to:
+
+- `src/ai_org/adapters/codex/smoke_helpers.py`
+- `tests/unit/test_codex_smoke_helpers.py`
+
+The task runs through the normal WorkerRegistry, task worktree, diff/log
+artifact collection, DockerSandboxRunner fixed test command, and independent
+Review Worker. It still does not auto-commit, merge, push, or modify the main
+branch.
+
 ## Docker Sandbox Foundation
 
 The repository includes `SandboxRunner` ports plus Mock and Docker adapters for
@@ -94,3 +105,13 @@ $env:AI_ORG_ENABLE_REAL_CODEX_SMOKE = "true"
 
 Do not run the manual smoke test in CI or without an intentionally configured
 local Codex CLI session.
+
+Manual real Codex small code task:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_CODE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_code_task.py -q
+```
+
+This test also requires Docker to be available. It is skipped by default and is
+not part of CI.

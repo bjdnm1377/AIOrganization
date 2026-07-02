@@ -19,7 +19,26 @@ from ai_org.ports.sandbox import (
     SandboxRunner,
 )
 from ai_org.ports.workers import Worker, WorkerRequest
-from ai_org.protocols.schemas import AgentResult, Artifact
+from ai_org.protocols.schemas import AgentResult, Artifact, WorkerTestRecord
+
+REAL_CODE_TASK_SANDBOX_COMMAND = (
+    "python",
+    "-c",
+    (
+        "import importlib.util, pathlib, sys; "
+        "sys.dont_write_bytecode = True; "
+        "helper = pathlib.Path('src/ai_org/adapters/codex/smoke_helpers.py'); "
+        "spec = importlib.util.spec_from_file_location('smoke_helpers', helper); "
+        "assert spec is not None and spec.loader is not None; "
+        "module = importlib.util.module_from_spec(spec); "
+        "spec.loader.exec_module(module); "
+        "format_smoke_metadata = module.format_smoke_metadata; "
+        "assert format_smoke_metadata({'b': 2, 'a': 'x', 'flag': True, 'none': None}) "
+        "== 'a=x, b=2, flag=true, none=null'; "
+        "assert format_smoke_metadata({}) == '<empty>'; "
+        "assert pathlib.Path('tests/unit/test_codex_smoke_helpers.py').exists()"
+    ),
+)
 
 
 class CodexWorker(Worker):
@@ -51,7 +70,7 @@ class CodexWorker(Worker):
         client: CodexClient
         if mode == "mock":
             client = MockCodexClient()
-        elif mode == "local_cli":
+        elif mode in {"local_cli", "local_code_task"}:
             client = LocalCodexCliClient()
         else:
             client = DryRunCodexClient()
@@ -79,12 +98,13 @@ class CodexWorker(Worker):
                 },
             )
         else:
-            sandbox_logs = (
+            pre_sandbox_logs = (
                 [_sandbox_command_log(sandbox_result, _worktree_uri(request))]
                 if sandbox_result is not None
                 else []
             )
-            sandbox_metadata = (
+            post_sandbox_logs: list[CommandLogEntry] = []
+            sandbox_metadata: dict[str, object] = (
                 {
                     "sandbox_enabled": True,
                     "sandbox_status": sandbox_result.status.value,
@@ -103,9 +123,42 @@ class CodexWorker(Worker):
                     prompt=prompt,
                 )
             )
+            sandbox_test_result = self._run_sandbox_tests_if_requested(
+                request, policy, task_result, context.worktree_path
+            )
+            if sandbox_test_result is not None:
+                post_sandbox_logs.append(
+                    _sandbox_command_log(
+                        sandbox_test_result,
+                        _worktree_uri(request),
+                        command_name="sandbox.test",
+                    )
+                )
+                sandbox_metadata.update(
+                    {
+                        "sandbox_tests_enabled": True,
+                        "sandbox_test_status": sandbox_test_result.status.value,
+                        "sandbox_test_error": sandbox_test_result.error,
+                    }
+                )
+                sandbox_test = WorkerTestRecord(
+                    name="sandbox-real-code-task",
+                    status="passed"
+                    if sandbox_test_result.status == SandboxCommandStatus.SUCCEEDED
+                    else "failed",
+                    details=sandbox_test_result.error or sandbox_test_result.stdout_summary,
+                )
+                task_result = replace(
+                    task_result,
+                    tests_run=[*task_result.tests_run, sandbox_test],
+                )
             task_result = replace(
                 task_result,
-                command_logs=[*sandbox_logs, *task_result.command_logs],
+                command_logs=[
+                    *pre_sandbox_logs,
+                    *task_result.command_logs,
+                    *post_sandbox_logs,
+                ],
                 metadata={**task_result.metadata, **sandbox_metadata},
             )
         commands = [
@@ -175,7 +228,7 @@ class CodexWorker(Worker):
             "command_logs": command_payload,
             "prompt_sha256": _sha256(prompt),
             "no_real_codex_started": task_result.metadata.get(
-                "no_real_codex_started", policy.mode != "local_cli"
+                "no_real_codex_started", policy.mode not in {"local_cli", "local_code_task"}
             ),
             "codex_thread_observed": task_result.metadata.get("codex_thread_observed", False),
             "codex_session_observed": task_result.metadata.get("codex_session_observed", False),
@@ -204,6 +257,8 @@ class CodexWorker(Worker):
             return MockCodexClient()
         if policy.mode == "local_cli" and not isinstance(self.client, LocalCodexCliClient):
             return LocalCodexCliClient()
+        if policy.mode == "local_code_task" and not isinstance(self.client, LocalCodexCliClient):
+            return LocalCodexCliClient()
         if policy.mode == "dry_run" and not isinstance(self.client, DryRunCodexClient):
             return DryRunCodexClient()
         return self.client
@@ -220,6 +275,32 @@ class CodexWorker(Worker):
                 command=("python", "-c", "print('ai-org-sandbox-ok')"),
                 worktree_path=worktree_path,
                 purpose="codex-worker-sandbox-smoke",
+            )
+        )
+
+    def _run_sandbox_tests_if_requested(
+        self,
+        request: WorkerRequest,
+        policy: CodingWorkerPolicy,
+        task_result: CodexTaskResult,
+        worktree_path: Path,
+    ) -> SandboxCommandResult | None:
+        if request.task.metadata.get("sandbox_test_profile") != "real_code_task_smoke":
+            return None
+        if policy.mode != "local_code_task" or task_result.status != AgentResultStatus.SUCCEEDED:
+            return None
+        if self.sandbox_runner is None:
+            return SandboxCommandResult(
+                status=SandboxCommandStatus.BLOCKED,
+                command=("sandbox", "test"),
+                error="SANDBOX_RUNNER_NOT_CONFIGURED",
+            )
+        return self.sandbox_runner.run(
+            SandboxCommandSpec(
+                command=REAL_CODE_TASK_SANDBOX_COMMAND,
+                worktree_path=worktree_path,
+                env={"PYTHONDONTWRITEBYTECODE": "1"},
+                purpose="codex-worker-real-code-task-test",
             )
         )
 
@@ -249,9 +330,11 @@ def _worktree_uri(request: WorkerRequest) -> str:
     return f"worktree://codex/{request.task.task_id}/attempt-{request.attempt_number}"
 
 
-def _sandbox_command_log(result: SandboxCommandResult, logical_cwd: str) -> CommandLogEntry:
+def _sandbox_command_log(
+    result: SandboxCommandResult, logical_cwd: str, *, command_name: str = "sandbox.health"
+) -> CommandLogEntry:
     return CommandLogEntry(
-        command="sandbox.health",
+        command=command_name,
         status=result.status.value,
         exit_code=result.exit_code,
         cwd=logical_cwd,

@@ -6,6 +6,7 @@ import re
 import shutil
 import subprocess
 from collections.abc import Callable, Mapping
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
@@ -36,6 +37,16 @@ ALLOWED_APPROVAL_POLICIES = {"on-request", "untrusted"}
 SUMMARY_LIMIT = 800
 WINDOWS_ABSOLUTE_PATH = re.compile(r"(?i)\b[A-Z]:(?:\\\\|\\)[^\"'\s,}\]]+")
 POSIX_ABSOLUTE_PATH = re.compile(r"(?<![\w])/(?:Users|home|tmp|var|private|mnt)/[^\s\"',}\]]+")
+CODE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_CODE_TASK"
+
+
+@dataclass(frozen=True, slots=True)
+class _OptInConfig:
+    mode: str
+    env_var: str
+    blocked_reason: str
+    disabled_summary: str
+    task_label: str
 
 
 class DryRunCodexClient(CodexClient):
@@ -138,14 +149,15 @@ class LocalCodexCliClient(CodexClient):
         self._results: dict[str, CodexTaskResult] = {}
 
     def start_task(self, request: CodexTaskRequest) -> CodexTaskResult:
-        if os.environ.get(self.enable_env_var, "").lower() != "true":
+        opt_in = _opt_in_config(request, self.enable_env_var)
+        if os.environ.get(opt_in.env_var, "").lower() != "true":
             result = _not_configured_result(
-                "Local Codex CLI smoke execution is disabled; explicit opt-in is required.",
+                opt_in.disabled_summary,
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": False,
-                    "enable_env_var": self.enable_env_var,
-                    "blocked_reason": "REAL_CODEX_SMOKE_OPT_IN_REQUIRED",
+                    "enable_env_var": opt_in.env_var,
+                    "blocked_reason": opt_in.blocked_reason,
                 },
             )
             self._results[request.task.task_id] = result
@@ -154,7 +166,7 @@ class LocalCodexCliClient(CodexClient):
             result = _not_configured_result(
                 "Codex CLI is not installed or is not on PATH.",
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_NOT_INSTALLED",
                 },
@@ -167,7 +179,7 @@ class LocalCodexCliClient(CodexClient):
                 config_error,
                 logs=[],
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_POLICY_BLOCKED",
                 },
@@ -189,7 +201,7 @@ class LocalCodexCliClient(CodexClient):
             result = _not_configured_result(
                 "Codex CLI is not installed or is not on PATH.",
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_NOT_INSTALLED",
                 },
@@ -202,7 +214,7 @@ class LocalCodexCliClient(CodexClient):
                 "Codex CLI version check timed out.",
                 logs=[log],
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_VERSION_TIMEOUT",
                 },
@@ -216,7 +228,7 @@ class LocalCodexCliClient(CodexClient):
                 "Codex CLI version check failed.",
                 command_logs=logs,
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_VERSION_FAILED",
                 },
@@ -243,10 +255,10 @@ class LocalCodexCliClient(CodexClient):
                 )
             )
             result = _not_configured_result(
-                "Codex CLI preflight timed out before smoke execution.",
+                f"Codex CLI preflight timed out before {opt_in.task_label} execution.",
                 command_logs=logs,
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "blocked_reason": "CODEX_CLI_PREFLIGHT_TIMEOUT",
                     "codex_preflight_passed": False,
@@ -271,10 +283,10 @@ class LocalCodexCliClient(CodexClient):
                     else "CODEX_CLI_PREFLIGHT_FAILED"
                 )
                 result = _not_configured_result(
-                    "Codex CLI preflight failed before smoke execution.",
+                    f"Codex CLI preflight failed before {opt_in.task_label} execution.",
                     command_logs=logs,
                     metadata={
-                        "codex_mode": "local_cli",
+                        "codex_mode": opt_in.mode,
                         "opt_in_enabled": True,
                         "blocked_reason": blocked_reason,
                         "codex_preflight_passed": False,
@@ -287,7 +299,7 @@ class LocalCodexCliClient(CodexClient):
                     "Codex CLI preflight did not confirm readiness.",
                     command_logs=logs,
                     metadata={
-                        "codex_mode": "local_cli",
+                        "codex_mode": opt_in.mode,
                         "opt_in_enabled": True,
                         "blocked_reason": "CODEX_CLI_PREFLIGHT_NOT_READY",
                         "codex_preflight_passed": False,
@@ -336,10 +348,10 @@ class LocalCodexCliClient(CodexClient):
                 )
             )
             result = _failed_result(
-                "Codex CLI smoke execution timed out.",
+                f"Codex CLI {opt_in.task_label} execution timed out.",
                 logs=logs,
                 metadata={
-                    "codex_mode": "local_cli",
+                    "codex_mode": opt_in.mode,
                     "opt_in_enabled": True,
                     "codex_version": _version_summary(version.stdout),
                     "blocked_reason": "CODEX_CLI_TIMEOUT",
@@ -367,10 +379,10 @@ class LocalCodexCliClient(CodexClient):
             auth_required = _looks_auth_required(execution.stdout, execution.stderr)
             result = (
                 _not_configured_result(
-                    "Codex CLI authentication is required before smoke execution.",
+                    f"Codex CLI authentication is required before {opt_in.task_label} execution.",
                     command_logs=logs,
                     metadata={
-                        "codex_mode": "local_cli",
+                        "codex_mode": opt_in.mode,
                         "opt_in_enabled": True,
                         "codex_version": _version_summary(version.stdout),
                         "blocked_reason": "CODEX_CLI_AUTH_REQUIRED",
@@ -383,10 +395,10 @@ class LocalCodexCliClient(CodexClient):
                 )
                 if auth_required
                 else _failed_result(
-                    "Codex CLI smoke execution failed.",
+                    f"Codex CLI {opt_in.task_label} execution failed.",
                     logs=logs,
                     metadata={
-                        "codex_mode": "local_cli",
+                        "codex_mode": opt_in.mode,
                         "opt_in_enabled": True,
                         "codex_version": _version_summary(version.stdout),
                         "blocked_reason": "CODEX_CLI_EXECUTION_FAILED",
@@ -403,23 +415,25 @@ class LocalCodexCliClient(CodexClient):
 
         result = CodexTaskResult(
             status=AgentResultStatus.SUCCEEDED,
-            summary="Codex CLI smoke execution completed inside the isolated worktree.",
+            summary=(
+                f"Codex CLI {opt_in.task_label} execution completed inside the isolated worktree."
+            ),
             evidence=["Codex CLI exited 0 with workspace-write sandbox and on-request approval."],
             tests_run=[
-                WorkerTestRecord(name="codex-real-smoke-cli", status="passed"),
+                WorkerTestRecord(name=f"codex-real-{opt_in.mode}", status="passed"),
             ],
             command_logs=logs,
             assumptions=[
-                "Smoke task scope is limited by task metadata and independent diff review.",
+                "Task scope is limited by task metadata and independent diff review.",
                 "No automatic commit or merge was performed.",
             ],
             risks=[
-                "This smoke test validates only a minimal local Codex CLI path, "
+                "This real Codex task validates only a minimal local CLI path, "
                 "not a production sandbox."
             ],
             unresolved_questions=[],
             metadata={
-                "codex_mode": "local_cli",
+                "codex_mode": opt_in.mode,
                 "opt_in_enabled": True,
                 "codex_version": _version_summary(version.stdout),
                 "sandbox_mode": sandbox,
@@ -484,14 +498,37 @@ def _not_configured_result(
     )
 
 
+def _opt_in_config(request: CodexTaskRequest, smoke_env_var: str) -> _OptInConfig:
+    mode = _metadata_string(request.task.metadata, "codex_mode", "local_cli")
+    if mode == "local_code_task":
+        return _OptInConfig(
+            mode=mode,
+            env_var=CODE_TASK_ENV_VAR,
+            blocked_reason="REAL_CODEX_CODE_TASK_OPT_IN_REQUIRED",
+            disabled_summary=(
+                "Local Codex CLI code-task execution is disabled; explicit opt-in is required."
+            ),
+            task_label="code task",
+        )
+    return _OptInConfig(
+        mode="local_cli",
+        env_var=smoke_env_var,
+        blocked_reason="REAL_CODEX_SMOKE_OPT_IN_REQUIRED",
+        disabled_summary=(
+            "Local Codex CLI smoke execution is disabled; explicit opt-in is required."
+        ),
+        task_label="smoke",
+    )
+
+
 def _failed_result(
     summary: str, *, logs: list[CommandLogEntry], metadata: dict[str, object]
 ) -> CodexTaskResult:
     return CodexTaskResult(
         status=AgentResultStatus.FAILED,
         summary=summary,
-        evidence=["Real Codex smoke execution did not complete successfully."],
-        tests_run=[WorkerTestRecord(name="codex-real-smoke-cli", status="failed")],
+        evidence=["Real Codex CLI execution did not complete successfully."],
+        tests_run=[WorkerTestRecord(name="codex-real-cli", status="failed")],
         command_logs=logs,
         assumptions=["The first-layer workflow must treat failed CLI execution as non-accepted."],
         risks=["Coding task was not accepted."],
@@ -551,9 +588,9 @@ def _configuration_error(request: CodexTaskRequest) -> str | None:
     sandbox = _metadata_string(request.task.metadata, "codex_sandbox", "workspace-write")
     approval_policy = _metadata_string(request.task.metadata, "codex_approval_policy", "on-request")
     if sandbox not in ALLOWED_SANDBOX_MODES:
-        return f"Codex sandbox mode {sandbox!r} is not allowed for smoke execution."
+        return f"Codex sandbox mode {sandbox!r} is not allowed for real CLI execution."
     if approval_policy not in ALLOWED_APPROVAL_POLICIES:
-        return f"Codex approval policy {approval_policy!r} is not allowed for smoke execution."
+        return f"Codex approval policy {approval_policy!r} is not allowed for real CLI execution."
     return None
 
 

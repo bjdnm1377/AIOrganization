@@ -15,11 +15,13 @@
 - Codex Worker Mock/DryRun behavior.
 - Local Codex CLI smoke opt-in, missing CLI, command construction, timeout, and
   failure behavior.
+- Local Codex CLI small code-task opt-in, missing CLI, restricted command
+  construction, fixed file scope, and Docker sandbox test-log behavior.
 - Worktree creation, path traversal defense, and symlink-boundary defense.
 - Coding Worker diff, artifact, command-log, review, rework, and idempotency.
 - Sandbox policy, MockSandboxRunner, DockerSandboxRunner, and optional
   CodexWorker sandbox hook behavior.
-- Manual real Codex CLI smoke test, skipped by default.
+- Manual real Codex CLI smoke and small code-task tests, skipped by default.
 
 ## Local Commands
 
@@ -52,6 +54,23 @@ Default pytest collection excludes `tests/manual` through `pyproject.toml`.
 When the file is run explicitly and `AI_ORG_ENABLE_REAL_CODEX_SMOKE` is unset,
 the test is skipped. CI sets the opt-in variable to `false` and does not require
 Codex credentials.
+
+## Manual Real Codex Small Code Task
+
+The small code-task test is not part of default pytest or CI execution. It
+requires a local Codex CLI session, Docker, and explicit opt-in:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_CODE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_code_task.py -q
+```
+
+The test runs a `codex_mode="local_code_task"` TaskSpec through the normal
+WorkerRegistry and workflow, creates a task worktree, asks Codex to create only
+the fixed smoke helper and unit-test files, runs a fixed DockerSandboxRunner
+validation command, records logical artifact URIs, and asserts that the main
+branch remains unchanged. If Docker is unavailable, the manual test skips with a
+clear reason and the stage report must not claim local Docker execution passed.
 
 ## PostgreSQL Integration
 
@@ -108,4 +127,4 @@ a license report and CycloneDX SBOM, runs `detect-secrets`, and runs
 Tests do not call real LLMs, real Codex, OpenHands, paid services, or
 user-provided untrusted code. Codex Worker tests use only `MockCodexClient`,
 `DryRunCodexClient`, and NOT_CONFIGURED `LocalCodexCliClient` behavior unless
-the manual smoke test is explicitly opted in locally.
+the manual smoke or small code-task tests are explicitly opted in locally.

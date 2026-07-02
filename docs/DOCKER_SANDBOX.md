@@ -56,10 +56,16 @@ credential, and other host credential paths are blocked.
 
 ## Codex Worker Integration
 
-`CodexWorker` accepts an optional `SandboxRunner`. It only invokes the sandbox
-when task metadata contains `sandbox_smoke=True`. The hook runs a fixed health
-command and records a `sandbox.health` command log. It does not execute
-task-provided shell commands and does not call real Codex.
+`CodexWorker` accepts an optional `SandboxRunner`. It invokes the sandbox only
+for fixed profiles:
+
+- `sandbox_smoke=True` runs a fixed health command and records `sandbox.health`.
+- `sandbox_test_profile="real_code_task_smoke"` runs a fixed Python assertion
+  command after the small real Codex code task and records `sandbox.test`.
+
+The sandbox test profile sets `PYTHONDONTWRITEBYTECODE=1` and does not execute
+task-provided shell commands. Real Codex is invoked by the local CLI client in
+the task worktree, not inside Docker.
 
 ## Test Coverage
 
@@ -78,6 +84,7 @@ integration step.
 
 - Real untrusted-code execution.
 - Codex command execution inside Docker.
+- Arbitrary task-provided test commands.
 - Network approval and egress allowlists.
 - Production image digest pinning and image vulnerability scanning.
 - Worktree cleanup automation.
