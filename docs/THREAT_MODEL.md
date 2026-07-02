@@ -7,6 +7,7 @@
 - Worker outputs and artifact metadata.
 - Codex task worktrees, diff artifacts, prompt artifacts, and command-log
   artifacts.
+- MergeCandidate artifacts and audit events awaiting human approval.
 - Docker sandbox command logs and task worktree mounts.
 - Dependency lock file and migration files.
 
@@ -35,6 +36,8 @@
   `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` opt-in.
 - Local real Codex CLI small code-task execution requires separate explicit
   `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` opt-in.
+- Local real Codex CLI multi-file execution requires separate explicit
+  `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` opt-in.
 - Local real Codex CLI smoke execution uses `workspace-write` sandbox,
   `on-request` approval, and `--cd <worktree>`.
 - Coding policy detects forbidden file changes, disallowed commands, suspicious
@@ -46,6 +49,13 @@
 - `local_code_task` policy narrows writes to the fixed smoke helper and unit
   test files, and forbids workflow, dependency, migration, docs, scripts,
   repository-control, and credential-bearing files.
+- `local_multi_file_task` policy narrows writes to `docs/MERGE_APPROVAL.md`,
+  `src/ai_org/adapters/codex/merge_candidate.py`, and
+  `tests/unit/test_codex_merge_candidate.py`, and forbids workflow,
+  dependency, migration, script, repository-control, and credential-bearing
+  files.
+- MergeCandidate summaries explicitly record no merge, no auto-merge, no
+  auto-push, required human approval, and `waiting_merge_approval` state.
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.
@@ -61,8 +71,10 @@
 ## Known Risks
 
 - Real Codex runtime is implemented only for a controlled local smoke test and
-  one controlled manual small code task with fixed file scope and no automatic
-  merge.
+  controlled manual code tasks with fixed file scopes and no automatic merge.
+- MergeCandidate output can be misleading if reviewed out of context; later
+  MergeService work must re-check policy, tests, and human approval before any
+  branch operation.
 - Docker sandboxing is implemented only as a foundation with fixed safe command
   tests; production arbitrary-code execution is not implemented.
 - Worktree cleanup is manual in this stage.
@@ -77,3 +89,4 @@
 - Stronger permission and budget domain model.
 - Separate database roles for application, checkpoint, and migration.
 - Artifact retention and cleanup policy.
+- Human-approved MergeService with re-validation before merge.

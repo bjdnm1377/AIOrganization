@@ -43,6 +43,7 @@ markers = [
   "postgres: requires PostgreSQL integration database",
   "manual_codex: requires explicit local Codex CLI smoke-test opt-in",
   "manual_codex_code_task: requires explicit local Codex CLI code-task opt-in",
+  "manual_codex_multi_file_task: requires explicit local Codex CLI multi-file task opt-in",
 ]
 
 [tool.ruff]

@@ -1,0 +1,49 @@
+# Merge Approval
+
+## Current Status
+
+Merge approval is not an automatic merge feature. The implemented capability is
+a read-only, side-effect-free MergeCandidate summary that can be reviewed by a
+human before a later merge implementation exists.
+
+## MergeCandidate Summary
+
+`build_merge_candidate_summary()` shapes structured data for a candidate:
+
+- changed files are sorted and local absolute paths are redacted;
+- `review_decision` records the current review state;
+- `tests_passed` records whether deterministic checks passed;
+- `merge_performed` is always `False`;
+- `auto_merge` is always `False`;
+- `auto_push` is always `False`;
+- `human_approval_required` is always `True`;
+- `approval_state` is `waiting_merge_approval`.
+
+The function does not read files, write files, execute shell commands, call the
+network, read environment variables, merge branches, push branches, delete
+worktrees, or deploy.
+
+## Workflow Boundary
+
+For `codex_mode="local_multi_file_task"`, `CodexWorker` may create a
+`merge-candidate` artifact after the task worktree diff is collected. The
+independent Review Worker must accept the Coding Worker result before the
+application writes a `merge_candidate.created` audit event.
+
+The main branch remains unchanged. The task worktree remains a manual review
+surface. Later stages may add a `MergeService`, but it must require explicit
+human approval, re-check policy, re-check tests, and refuse high-risk files
+without a separate approval path.
+
+## High-Risk Files
+
+The current multi-file task policy allows only:
+
+- `docs/MERGE_APPROVAL.md`
+- `src/ai_org/adapters/codex/merge_candidate.py`
+- `tests/unit/test_codex_merge_candidate.py`
+
+Repository control files, dependency files, migrations, CI workflows, scripts,
+environment files, credentials, `AGENTS.md`, `README.md`, and production config
+are outside this task scope. If any such file changes, the result is rejected
+before merge approval can be considered.

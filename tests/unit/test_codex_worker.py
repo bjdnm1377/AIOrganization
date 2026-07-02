@@ -15,7 +15,7 @@ from ai_org.domain.enums import AgentResultStatus, ReviewDecision, RiskLevel, Ta
 from ai_org.domain.models import Task
 from ai_org.ports.codex import CodexTaskRequest, CodexTaskResult, CommandLogEntry
 from ai_org.ports.workers import WorkerRequest
-from ai_org.protocols.schemas import WorkerTestRecord
+from ai_org.protocols.schemas import AgentResult, WorkerTestRecord
 from ai_org.security import redact, sensitive_pattern_count
 
 
@@ -121,6 +121,26 @@ def test_local_code_task_client_does_not_call_runner_without_opt_in(tmp_path: Pa
     assert runner.calls == []
 
 
+def test_local_multi_file_task_client_does_not_call_runner_without_opt_in(
+    tmp_path: Path,
+) -> None:
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_multi_file_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_multi_file_task"
+    assert result.metadata["blocked_reason"] == "REAL_CODEX_MULTI_FILE_TASK_OPT_IN_REQUIRED"
+    assert runner.calls == []
+
+
 def test_local_code_task_client_reports_missing_cli_when_opted_in(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -136,6 +156,25 @@ def test_local_code_task_client_reports_missing_cli_when_opted_in(
 
     assert result.status == AgentResultStatus.NOT_CONFIGURED
     assert result.metadata["codex_mode"] == "local_code_task"
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
+    assert result.metadata["no_real_codex_started"] is True
+
+
+def test_local_multi_file_task_client_reports_missing_cli_when_opted_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(command="ai-org-missing-codex-command"),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_multi_file_task"
     assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
     assert result.metadata["no_real_codex_started"] is True
 
@@ -222,6 +261,36 @@ def test_local_code_task_client_uses_restricted_exec_command(
     assert result.metadata["codex_mode"] == "local_code_task"
     assert result.metadata["no_real_codex_started"] is False
     assert result.metadata["codex_thread_observed"] is True
+
+
+def test_local_multi_file_task_client_uses_restricted_exec_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_multi_file_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Create only allowed merge candidate files without sk-test-secret.",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    exec_call = runner.calls[-1]
+    command = _command_parts(exec_call)
+    assert exec_call["cwd"] == tmp_path
+    assert "--sandbox" in command
+    assert "workspace-write" in command
+    assert "--ask-for-approval" in command
+    assert "on-request" in command
+    assert "--cd" in command
+    assert str(tmp_path) in command
+    assert "sk-test-secret" not in " ".join(command)
+    assert result.metadata["codex_mode"] == "local_multi_file_task"
+    assert result.metadata["no_real_codex_started"] is False
 
 
 def test_local_cli_client_blocks_dangerous_sandbox(
@@ -336,6 +405,21 @@ def test_local_code_task_policy_cannot_widen_file_scope() -> None:
     assert policy.file_violations(["src/ai_org/adapters/codex/smoke_helpers.py"]) == []
 
 
+def test_local_multi_file_task_policy_cannot_widen_file_scope() -> None:
+    policy = CodingWorkerPolicy.from_task(
+        _task(metadata={"codex_mode": "local_multi_file_task", "allowed_files": ["**"]})
+    )
+
+    assert policy.allowed_files == [
+        "docs/MERGE_APPROVAL.md",
+        "src/ai_org/adapters/codex/merge_candidate.py",
+        "tests/unit/test_codex_merge_candidate.py",
+    ]
+    assert policy.file_violations(["docs/MERGE_APPROVAL.md"]) == []
+    assert policy.file_violations(["docs/forbidden.md"]) == ["docs/forbidden.md"]
+    assert policy.file_violations(["scripts/run.ps1"]) == ["scripts/run.ps1"]
+
+
 def test_local_cli_doctor_timeout_fails_closed(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -426,6 +510,24 @@ def test_review_rejects_local_code_task_forbidden_file_violation(
     assert report.decision == ReviewDecision.REJECTED
 
 
+def test_review_rejects_local_multi_file_task_forbidden_file_violation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_forbidden_file=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert "docs/forbidden.md" in result.metadata["forbidden_file_violations"]
+    assert report.decision == ReviewDecision.REJECTED
+
+
 def test_codex_worker_records_sandbox_test_command(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -453,6 +555,70 @@ def test_codex_worker_records_sandbox_test_command(
     assert result.metadata["command_logs"][-1]["command"] == "sandbox.test"
     assert len(sandbox_runner.requests) == 1
     assert sandbox_runner.requests[0].env == {"PYTHONDONTWRITEBYTECODE": "1"}
+
+
+def test_codex_worker_records_multi_file_sandbox_test_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    sandbox_runner = MockSandboxRunner()
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_multi_file_task=True)),
+        sandbox_runner=sandbox_runner,
+    )
+    task = _task(
+        metadata={
+            "codex_mode": "local_multi_file_task",
+            "sandbox_test_profile": "real_multi_file_task_merge_candidate",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.metadata["sandbox_tests_enabled"] is True
+    assert result.metadata["sandbox_test_status"] == "SUCCEEDED"
+    assert result.tests_run[-1].name == "sandbox-real-multi-file-task"
+    assert result.tests_run[-1].status == "passed"
+    assert result.metadata["command_logs"][-1]["command"] == "sandbox.test"
+    assert len(sandbox_runner.requests) == 1
+    assert sandbox_runner.requests[0].purpose == "codex-worker-real-multi-file-task-test"
+
+
+def test_codex_worker_creates_merge_candidate_without_merging(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_multi_file_task=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    assert result.metadata["changed_files"] == [
+        "docs/MERGE_APPROVAL.md",
+        "src/ai_org/adapters/codex/merge_candidate.py",
+        "tests/unit/test_codex_merge_candidate.py",
+    ]
+    candidate = result.metadata["merge_candidate"]
+    assert isinstance(candidate, dict)
+    assert candidate["merge_performed"] is False
+    assert candidate["auto_merge"] is False
+    assert candidate["auto_push"] is False
+    assert candidate["approval_state"] == "waiting_merge_approval"
+    assert result.metadata["merge_candidate_status"] == "WAITING_MERGE_APPROVAL"
+    assert str(repo) not in str(candidate)
+    merge_artifacts = [
+        artifact for artifact in result.artifacts if artifact.name == "merge-candidate"
+    ]
+    assert len(merge_artifacts) == 1
+    assert merge_artifacts[0].uri.startswith("artifact://codex/task_codex/attempt-1/")
+    assert _git(repo, "status", "--short").strip() == ""
 
 
 def test_codex_worker_does_not_run_code_task_sandbox_test_without_opt_in(
@@ -557,6 +723,37 @@ def test_review_rejects_disallowed_completed_command(tmp_path: Path) -> None:
     assert result.metadata["command_violations"] == ["rm -rf workspace"]
     assert result.metadata["command_logs"][0]["allowed"] is False
     assert report.decision == ReviewDecision.REJECTED
+
+
+def test_review_rejects_merge_candidate_that_performs_merge() -> None:
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+    result = AgentResult(
+        task_id=task.task_id,
+        status=AgentResultStatus.SUCCEEDED,
+        summary="Unsafe merge candidate",
+        artifacts=[],
+        evidence=[],
+        tests_run=[WorkerTestRecord(name="unit", status="passed")],
+        assumptions=[],
+        risks=[],
+        unresolved_questions=[],
+        metadata={
+            "coding_worker": True,
+            "policy_violations": [],
+            "merge_candidate": {
+                "merge_performed": True,
+                "auto_merge": False,
+                "auto_push": False,
+                "human_approval_required": True,
+                "approval_state": "waiting_merge_approval",
+            },
+        },
+    )
+
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert report.decision == ReviewDecision.REJECTED
+    assert "merge_candidate:merge_performed_not_false" in report.defects
 
 
 def test_review_requires_rework_for_failed_coding_tests(tmp_path: Path) -> None:
@@ -689,10 +886,14 @@ def _git(cwd: Path, *args: str) -> str:
 
 
 def _joined_command(call: dict[str, object]) -> str:
+    return " ".join(_command_parts(call))
+
+
+def _command_parts(call: dict[str, object]) -> list[str]:
     command = call["command"]
     assert isinstance(command, list)
     assert all(isinstance(part, str) for part in command)
-    return " ".join(part for part in command if isinstance(part, str))
+    return [part for part in command if isinstance(part, str)]
 
 
 class MaliciousCommandClient:
@@ -730,6 +931,7 @@ class FakeCodexRunner:
         doctor_returncode: int = 0,
         doctor_stdout: str | None = None,
         write_forbidden_file: bool = False,
+        write_multi_file_task: bool = False,
     ) -> None:
         self.exec_returncode = exec_returncode
         self.timeout_on_exec = timeout_on_exec
@@ -737,6 +939,7 @@ class FakeCodexRunner:
         self.doctor_returncode = doctor_returncode
         self.doctor_stdout = doctor_stdout
         self.write_forbidden_file = write_forbidden_file
+        self.write_multi_file_task = write_multi_file_task
         self.calls: list[dict[str, object]] = []
 
     def __call__(
@@ -777,6 +980,38 @@ class FakeCodexRunner:
                 target = cwd / "docs" / "forbidden.md"
                 target.parent.mkdir(parents=True, exist_ok=True)
                 target.write_text("forbidden change\n", encoding="utf-8")
+            if self.write_multi_file_task:
+                files = {
+                    "docs/MERGE_APPROVAL.md": (
+                        "# Merge Approval\n\nManual marker: human-approval-only.\n"
+                    ),
+                    "src/ai_org/adapters/codex/merge_candidate.py": (
+                        "MERGE_CANDIDATE_MANUAL_TASK_MARKER = 'human-approval-only'\n\n"
+                        "def build_merge_candidate_summary(changed_files, diff_summary, "
+                        "review_decision, tests_passed):\n"
+                        "    return {'changed_files': sorted(changed_files), "
+                        "'diff_summary': diff_summary, 'review_decision': review_decision, "
+                        "'tests_passed': tests_passed, 'merge_performed': False, "
+                        "'auto_merge': False, 'auto_push': False, "
+                        "'human_approval_required': True, "
+                        "'approval_state': 'waiting_merge_approval'}\n"
+                    ),
+                    "tests/unit/test_codex_merge_candidate.py": (
+                        "from ai_org.adapters.codex.merge_candidate import (\n"
+                        "    MERGE_CANDIDATE_MANUAL_TASK_MARKER,\n"
+                        "    build_merge_candidate_summary,\n"
+                        ")\n\n"
+                        "def test_summary():\n"
+                        "    assert build_merge_candidate_summary(['b', 'a'], 'd', "
+                        "'accepted', True)['changed_files'] == ['a', 'b']\n"
+                        "    assert MERGE_CANDIDATE_MANUAL_TASK_MARKER "
+                        "== 'human-approval-only'\n"
+                    ),
+                }
+                for name, body in files.items():
+                    target = cwd / name
+                    target.parent.mkdir(parents=True, exist_ok=True)
+                    target.write_text(body, encoding="utf-8")
             escaped_path = str(cwd / "smoke" / "escaped.txt").replace("\\", "\\\\")
             return subprocess.CompletedProcess(
                 command,

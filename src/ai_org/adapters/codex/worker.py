@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import json
 from dataclasses import replace
 from pathlib import Path
 
 from ai_org.adapters.codex.clients import DryRunCodexClient, LocalCodexCliClient, MockCodexClient
-from ai_org.adapters.codex.diff import DiffCollector
+from ai_org.adapters.codex.diff import DiffCollector, DiffSummary
 from ai_org.adapters.codex.logs import CommandLogCollector
+from ai_org.adapters.codex.merge_candidate import MergeCandidateService
 from ai_org.adapters.codex.policy import CodingWorkerPolicy
 from ai_org.adapters.codex.prompt import CodingTaskPromptRenderer
 from ai_org.adapters.codex.worktree import WorktreeService
@@ -40,6 +42,37 @@ REAL_CODE_TASK_SANDBOX_COMMAND = (
     ),
 )
 
+REAL_MULTI_FILE_TASK_SANDBOX_COMMAND = (
+    "python",
+    "-c",
+    (
+        "import importlib.util, pathlib, sys; "
+        "sys.dont_write_bytecode = True; "
+        "module_path = pathlib.Path('src/ai_org/adapters/codex/merge_candidate.py'); "
+        "assert module_path.exists(); "
+        "spec = importlib.util.spec_from_file_location('merge_candidate', module_path); "
+        "assert spec is not None and spec.loader is not None; "
+        "module = importlib.util.module_from_spec(spec); "
+        "spec.loader.exec_module(module); "
+        "summary = module.build_merge_candidate_summary("
+        "['tests/z.py', 'src/a.py'], '2 files changed', 'accepted', True"
+        "); "
+        "assert summary['changed_files'] == ['src/a.py', 'tests/z.py']; "
+        "assert summary['review_decision'] == 'accepted'; "
+        "assert summary['tests_passed'] is True; "
+        "assert summary['merge_performed'] is False; "
+        "assert summary['auto_merge'] is False; "
+        "assert summary['auto_push'] is False; "
+        "assert getattr(module, 'MERGE_CANDIDATE_MANUAL_TASK_MARKER') "
+        "== 'human-approval-only'; "
+        "assert pathlib.Path('tests/unit/test_codex_merge_candidate.py').exists(); "
+        "test_text = pathlib.Path('tests/unit/test_codex_merge_candidate.py').read_text(); "
+        "assert 'MERGE_CANDIDATE_MANUAL_TASK_MARKER' in test_text; "
+        "doc_text = pathlib.Path('docs/MERGE_APPROVAL.md').read_text(); "
+        "assert 'human-approval-only' in doc_text"
+    ),
+)
+
 
 class CodexWorker(Worker):
     worker_type = WorkerType.CODEX.value
@@ -70,7 +103,7 @@ class CodexWorker(Worker):
         client: CodexClient
         if mode == "mock":
             client = MockCodexClient()
-        elif mode in {"local_cli", "local_code_task"}:
+        elif mode in {"local_cli", "local_code_task", "local_multi_file_task"}:
             client = LocalCodexCliClient()
         else:
             client = DryRunCodexClient()
@@ -142,7 +175,7 @@ class CodexWorker(Worker):
                     }
                 )
                 sandbox_test = WorkerTestRecord(
-                    name="sandbox-real-code-task",
+                    name=_sandbox_test_name(request.task.metadata.get("sandbox_test_profile")),
                     status="passed"
                     if sandbox_test_result.status == SandboxCommandStatus.SUCCEEDED
                     else "failed",
@@ -199,8 +232,14 @@ class CodexWorker(Worker):
             _artifact("codex-command-log", command_log_path, "json", request),
             _artifact("codex-diff", diff_path, "patch", request),
         ]
+        merge_artifact, merge_metadata = self._merge_candidate_artifact_if_needed(
+            request, policy, task_result, diff_summary
+        )
+        if merge_artifact is not None:
+            artifacts.append(merge_artifact)
         metadata: dict[str, object] = {
             **task_result.metadata,
+            **merge_metadata,
             "coding_worker": True,
             "codex_mode": policy.mode,
             "worktree_path": logical_worktree,
@@ -228,7 +267,8 @@ class CodexWorker(Worker):
             "command_logs": command_payload,
             "prompt_sha256": _sha256(prompt),
             "no_real_codex_started": task_result.metadata.get(
-                "no_real_codex_started", policy.mode not in {"local_cli", "local_code_task"}
+                "no_real_codex_started",
+                policy.mode not in {"local_cli", "local_code_task", "local_multi_file_task"},
             ),
             "codex_thread_observed": task_result.metadata.get("codex_thread_observed", False),
             "codex_session_observed": task_result.metadata.get("codex_session_observed", False),
@@ -259,6 +299,10 @@ class CodexWorker(Worker):
             return LocalCodexCliClient()
         if policy.mode == "local_code_task" and not isinstance(self.client, LocalCodexCliClient):
             return LocalCodexCliClient()
+        if policy.mode == "local_multi_file_task" and not isinstance(
+            self.client, LocalCodexCliClient
+        ):
+            return LocalCodexCliClient()
         if policy.mode == "dry_run" and not isinstance(self.client, DryRunCodexClient):
             return DryRunCodexClient()
         return self.client
@@ -285,9 +329,18 @@ class CodexWorker(Worker):
         task_result: CodexTaskResult,
         worktree_path: Path,
     ) -> SandboxCommandResult | None:
-        if request.task.metadata.get("sandbox_test_profile") != "real_code_task_smoke":
+        profile = request.task.metadata.get("sandbox_test_profile")
+        if profile == "real_code_task_smoke":
+            expected_mode = "local_code_task"
+            command = REAL_CODE_TASK_SANDBOX_COMMAND
+            purpose = "codex-worker-real-code-task-test"
+        elif profile == "real_multi_file_task_merge_candidate":
+            expected_mode = "local_multi_file_task"
+            command = REAL_MULTI_FILE_TASK_SANDBOX_COMMAND
+            purpose = "codex-worker-real-multi-file-task-test"
+        else:
             return None
-        if policy.mode != "local_code_task" or task_result.status != AgentResultStatus.SUCCEEDED:
+        if policy.mode != expected_mode or task_result.status != AgentResultStatus.SUCCEEDED:
             return None
         if self.sandbox_runner is None:
             return SandboxCommandResult(
@@ -297,12 +350,41 @@ class CodexWorker(Worker):
             )
         return self.sandbox_runner.run(
             SandboxCommandSpec(
-                command=REAL_CODE_TASK_SANDBOX_COMMAND,
+                command=command,
                 worktree_path=worktree_path,
                 env={"PYTHONDONTWRITEBYTECODE": "1"},
-                purpose="codex-worker-real-code-task-test",
+                purpose=purpose,
             )
         )
+
+    def _merge_candidate_artifact_if_needed(
+        self,
+        request: WorkerRequest,
+        policy: CodingWorkerPolicy,
+        task_result: CodexTaskResult,
+        diff_summary: DiffSummary,
+    ) -> tuple[Artifact | None, dict[str, object]]:
+        if (
+            policy.mode != "local_multi_file_task"
+            or task_result.status != AgentResultStatus.SUCCEEDED
+        ):
+            return None, {}
+        summary = MergeCandidateService().build_summary(
+            changed_files=diff_summary.changed_files,
+            diff_summary=_diff_summary_text(diff_summary),
+            review_decision="pending_review",
+            tests_passed=_tests_passed(task_result.tests_run),
+        )
+        directory = self.artifact_root / request.task.task_id / f"attempt-{request.attempt_number}"
+        directory.mkdir(parents=True, exist_ok=True)
+        path = directory / "merge-candidate.json"
+        path.write_text(json.dumps(summary, indent=2, sort_keys=True), encoding="utf-8")
+        artifact = _artifact("merge-candidate", path, "json", request)
+        return artifact, {
+            "merge_candidate": summary,
+            "merge_candidate_artifact_uri": artifact.uri,
+            "merge_candidate_status": "WAITING_MERGE_APPROVAL",
+        }
 
     def _write_prompt(self, task_id: str, attempt_number: int, prompt: str) -> Path:
         directory = self.artifact_root / task_id / f"attempt-{attempt_number}"
@@ -324,6 +406,27 @@ def _artifact(name: str, path: Path, kind: str, request: WorkerRequest) -> Artif
 
 def _sha256(value: str) -> str:
     return hashlib.sha256(value.encode("utf-8")).hexdigest()
+
+
+def _sandbox_test_name(profile: object) -> str:
+    if profile == "real_multi_file_task_merge_candidate":
+        return "sandbox-real-multi-file-task"
+    return "sandbox-real-code-task"
+
+
+def _diff_summary_text(diff_summary: DiffSummary) -> str:
+    return (
+        f"changed={len(diff_summary.changed_files)}; "
+        f"created={len(diff_summary.created_files)}; "
+        f"deleted={len(diff_summary.deleted_files)}; "
+        f"binary={len(diff_summary.binary_files)}; "
+        f"truncated={diff_summary.truncated}; "
+        f"sha256={diff_summary.sha256}"
+    )
+
+
+def _tests_passed(records: list[WorkerTestRecord]) -> bool:
+    return bool(records) and all(record.status in {"passed", "skipped"} for record in records)
 
 
 def _worktree_uri(request: WorkerRequest) -> str:

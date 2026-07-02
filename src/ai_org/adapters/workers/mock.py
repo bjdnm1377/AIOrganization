@@ -183,6 +183,22 @@ def _review_coding_result(
             rework_instructions=["Resolve policy violations before another attempt."],
             confidence=0.96,
         )
+    merge_candidate_defects = _merge_candidate_defects(result.metadata.get("merge_candidate"))
+    if merge_candidate_defects:
+        return ReviewReport(
+            task_id=task.task_id,
+            decision=ReviewDecision.REJECTED,
+            criteria_results=[
+                CriteriaResult(
+                    criterion="merge_candidate_approval_boundary",
+                    passed=False,
+                    notes="MergeCandidate summary must not perform merge, push, or approval.",
+                )
+            ],
+            defects=merge_candidate_defects,
+            rework_instructions=["Return only a pending human-approval merge candidate summary."],
+            confidence=0.97,
+        )
     if failed_tests:
         return ReviewReport(
             task_id=task.task_id,
@@ -220,6 +236,20 @@ def _string_list(value: object) -> list[str]:
     if not isinstance(value, list):
         return []
     return [item for item in value if isinstance(item, str)]
+
+
+def _merge_candidate_defects(value: object) -> list[str]:
+    if not isinstance(value, dict):
+        return []
+    defects: list[str] = []
+    for key in ("merge_performed", "auto_merge", "auto_push"):
+        if value.get(key) is not False:
+            defects.append(f"merge_candidate:{key}_not_false")
+    if value.get("human_approval_required") is not True:
+        defects.append("merge_candidate:human_approval_not_required")
+    if value.get("approval_state") != "waiting_merge_approval":
+        defects.append("merge_candidate:not_waiting_merge_approval")
+    return defects
 
 
 def _build_codex_worker(repo_root: Path) -> Worker:

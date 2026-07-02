@@ -38,6 +38,7 @@ SUMMARY_LIMIT = 800
 WINDOWS_ABSOLUTE_PATH = re.compile(r"(?i)\b[A-Z]:(?:\\\\|\\)[^\"'\s,}\]]+")
 POSIX_ABSOLUTE_PATH = re.compile(r"(?<![\w])/(?:Users|home|tmp|var|private|mnt)/[^\s\"',}\]]+")
 CODE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_CODE_TASK"
+MULTI_FILE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK"
 
 
 @dataclass(frozen=True, slots=True)
@@ -500,6 +501,17 @@ def _not_configured_result(
 
 def _opt_in_config(request: CodexTaskRequest, smoke_env_var: str) -> _OptInConfig:
     mode = _metadata_string(request.task.metadata, "codex_mode", "local_cli")
+    if mode == "local_multi_file_task":
+        return _OptInConfig(
+            mode=mode,
+            env_var=MULTI_FILE_TASK_ENV_VAR,
+            blocked_reason="REAL_CODEX_MULTI_FILE_TASK_OPT_IN_REQUIRED",
+            disabled_summary=(
+                "Local Codex CLI multi-file task execution is disabled; "
+                "explicit opt-in is required."
+            ),
+            task_label="multi-file task",
+        )
     if mode == "local_code_task":
         return _OptInConfig(
             mode=mode,
@@ -546,6 +558,8 @@ def _run_subprocess(
         input=stdin,
         check=False,
         text=True,
+        encoding="utf-8",
+        errors="replace",
         capture_output=True,
         timeout=timeout_seconds,
         env=_safe_environment(),

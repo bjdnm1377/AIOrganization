@@ -29,6 +29,10 @@ Artifact endpoints return `Artifact` metadata from structured `AgentResult`
 output. They do not inline full diff, prompt, command-log content, database
 passwords, environment variables, checkpoint binary payloads, or stack traces.
 Codex Worker metadata uses logical worktree values such as
+`worktree://codex/{task_id}/attempt-{n}`. MergeCandidate output is exposed as
+artifact metadata through `GET /worker-runs/{run_id}/artifacts` and as a
+`merge_candidate.created` audit event through
+`GET /projects/{project_id}/audit-events`; neither endpoint performs a merge.
 `worktree://codex/{task_id}/attempt-1`; artifact URIs use
 `artifact://codex/...`.
 

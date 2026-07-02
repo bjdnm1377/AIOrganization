@@ -19,7 +19,11 @@ Safety controls:
 - The main working tree is not modified by the manual real Codex small code
   task; changed files are collected from the task worktree and reviewed without
   automatic merge.
+- The main working tree is not modified by the manual real Codex multi-file
+  task; changed files are collected from the task worktree and represented as a
+  pending MergeCandidate summary without automatic merge.
 - No automatic merge is performed.
+- No automatic push is performed.
 - API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
   URIs instead of local absolute paths.
 - Docker sandbox integration mounts only the task worktree at `/workspace`; it
@@ -48,6 +52,21 @@ The policy forbids repository control files, workflow files, dependency files,
 migrations, docs, `AGENTS.md`, `README.md`, `docker-compose.yml`, `scripts/**`,
 and `.env*`. The task runs in a dedicated worktree and is not committed, merged,
 or pushed automatically.
+
+## Real Codex Multi-File Merge Candidate Scope
+
+For `codex_mode="local_multi_file_task"`, the intended task may create or update
+only:
+
+- `docs/MERGE_APPROVAL.md`
+- `src/ai_org/adapters/codex/merge_candidate.py`
+- `tests/unit/test_codex_merge_candidate.py`
+
+The policy forbids repository control files, workflow files, dependency files,
+migrations, scripts, `AGENTS.md`, `README.md`, `docker-compose.yml`, and
+`.env*`. The task runs in a dedicated worktree. The resulting
+MergeCandidate artifact is a review surface only; it is not committed, merged,
+pushed, or deployed automatically.
 
 ## Cleanup
 

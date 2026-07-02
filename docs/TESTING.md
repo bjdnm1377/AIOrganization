@@ -17,11 +17,17 @@
   failure behavior.
 - Local Codex CLI small code-task opt-in, missing CLI, restricted command
   construction, fixed file scope, and Docker sandbox test-log behavior.
+- Local Codex CLI multi-file task opt-in, missing CLI, restricted command
+  construction, fixed file scope, MergeCandidate artifact creation, and Docker
+  sandbox test-log behavior.
+- MergeCandidate pure data shaping, local absolute path redaction, no merge,
+  no auto-push, and application audit-event creation after accepted review.
 - Worktree creation, path traversal defense, and symlink-boundary defense.
 - Coding Worker diff, artifact, command-log, review, rework, and idempotency.
 - Sandbox policy, MockSandboxRunner, DockerSandboxRunner, and optional
   CodexWorker sandbox hook behavior.
-- Manual real Codex CLI smoke and small code-task tests, skipped by default.
+- Manual real Codex CLI smoke, small code-task, and multi-file merge candidate
+  tests, skipped by default.
 
 ## Local Commands
 
@@ -72,6 +78,27 @@ validation command, records logical artifact URIs, and asserts that the main
 branch remains unchanged. If Docker is unavailable, the manual test skips with a
 clear reason and the stage report must not claim local Docker execution passed.
 
+## Manual Real Codex Multi-File Merge Candidate Task
+
+The multi-file task test is not part of default pytest or CI execution. It
+requires a local Codex CLI session, Docker, and explicit opt-in:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_multi_file_task.py -q
+```
+
+The test runs a `codex_mode="local_multi_file_task"` TaskSpec through the normal
+WorkerRegistry and workflow, creates a task worktree, asks Codex to modify only
+`docs/MERGE_APPROVAL.md`,
+`src/ai_org/adapters/codex/merge_candidate.py`, and
+`tests/unit/test_codex_merge_candidate.py`, runs a fixed DockerSandboxRunner
+validation command, records logical artifact URIs, creates a
+`merge_candidate.created` audit event after independent Review Worker
+acceptance, and asserts that the main branch remains unchanged. If Docker is
+unavailable, the manual test skips with a clear reason and the stage report must
+not claim local Docker execution passed.
+
 ## PostgreSQL Integration
 
 Tests marked `postgres` run in two modes:
@@ -110,7 +137,9 @@ python -m pytest tests/e2e/test_api.py -q
 python -m pytest tests/unit/test_checkpoint_security.py -q
 python -m pytest \
   tests/unit/test_worktree_service.py \
+  tests/unit/test_codex_merge_candidate.py \
   tests/unit/test_codex_worker.py \
+  tests/unit/test_merge_candidate_audit.py \
   tests/integration/test_codex_worker_workflow.py \
   tests/e2e/test_api.py \
   -q
@@ -127,4 +156,5 @@ a license report and CycloneDX SBOM, runs `detect-secrets`, and runs
 Tests do not call real LLMs, real Codex, OpenHands, paid services, or
 user-provided untrusted code. Codex Worker tests use only `MockCodexClient`,
 `DryRunCodexClient`, and NOT_CONFIGURED `LocalCodexCliClient` behavior unless
-the manual smoke or small code-task tests are explicitly opted in locally.
+the manual smoke, small code-task, or multi-file merge candidate tests are
+explicitly opted in locally.

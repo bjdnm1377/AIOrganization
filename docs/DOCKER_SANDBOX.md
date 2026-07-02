@@ -62,6 +62,9 @@ for fixed profiles:
 - `sandbox_smoke=True` runs a fixed health command and records `sandbox.health`.
 - `sandbox_test_profile="real_code_task_smoke"` runs a fixed Python assertion
   command after the small real Codex code task and records `sandbox.test`.
+- `sandbox_test_profile="real_multi_file_task_merge_candidate"` runs a fixed
+  Python assertion command after the controlled multi-file Codex task and
+  records `sandbox.test`.
 
 The sandbox test profile sets `PYTHONDONTWRITEBYTECODE=1` and does not execute
 task-provided shell commands. Real Codex is invoked by the local CLI client in
@@ -89,3 +92,4 @@ integration step.
 - Production image digest pinning and image vulnerability scanning.
 - Worktree cleanup automation.
 - Automatic merge of sandbox results.
+- Automatic merge approval or branch merge.

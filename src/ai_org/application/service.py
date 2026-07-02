@@ -7,6 +7,8 @@ from functools import wraps
 from typing import Any, Concatenate, cast
 from uuid import uuid4
 
+from pydantic import ValidationError
+
 from ai_org.domain.enums import (
     ActorType,
     AgentResultStatus,
@@ -424,6 +426,7 @@ class ProjectApplicationService:
         task = self._require_task(task_id)
         if report.decision == ReviewDecision.ACCEPTED:
             self._update_task_status(task, TaskStatus.ACCEPTED)
+            self._audit_merge_candidate_if_present(task, report)
             self.audit(
                 task.project_id,
                 task.task_id,
@@ -482,6 +485,40 @@ class ProjectApplicationService:
             if approval.task_id == task_id
         ]
         return approvals[-1] if approvals else None
+
+    def _audit_merge_candidate_if_present(self, task: Task, report: ReviewReport) -> None:
+        result = self._latest_production_agent_result(task)
+        if result is None:
+            return
+        candidate = result.metadata.get("merge_candidate")
+        if not isinstance(candidate, dict):
+            return
+        artifact_uri = result.metadata.get("merge_candidate_artifact_uri")
+        self.audit(
+            task.project_id,
+            task.task_id,
+            "merge_candidate.created",
+            ActorType.SYSTEM,
+            "merge-candidate-service",
+            {
+                "artifact_uri": artifact_uri if isinstance(artifact_uri, str) else None,
+                "candidate": candidate,
+                "review_decision": report.decision.value,
+            },
+        )
+
+    def _latest_production_agent_result(self, task: Task) -> AgentResult | None:
+        runs = [
+            run
+            for run in self.repo.list_worker_runs(task.task_id)
+            if run.worker_type == task.worker_type and run.structured_output is not None
+        ]
+        if not runs:
+            return None
+        try:
+            return AgentResult.model_validate(runs[-1].structured_output)
+        except ValidationError:
+            return None
 
     def audit(
         self,

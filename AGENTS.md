@@ -3,7 +3,8 @@
 This repository implements a two-layer AI organization system. The current
 stage includes the minimal persistent workflow, Mock/DryRun Codex Coding Worker
 isolation, controlled real Codex smoke testing, Docker sandbox foundation, and a
-manual real Codex small code-task path.
+manual real Codex small code-task path plus a controlled multi-file
+MergeCandidate path.
 
 ## Current Boundaries
 
@@ -11,7 +12,9 @@ manual real Codex small code-task path.
 - Do not request or use real API keys.
 - Do not start real Codex tasks by default. Current exceptions require explicit
   opt-in: `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true` for smoke testing and
-  `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` for the small code task.
+  `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` for the small code task, and
+  `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` for the controlled
+  multi-file merge candidate task.
 - Do not integrate OpenHands, Virtuoso, HFSS, MATLAB, Redis, or Temporal.
 - Do not execute user-provided untrusted code.
 - Do not treat the Docker sandbox foundation as a production arbitrary-code
@@ -32,6 +35,11 @@ manual real Codex small code-task path.
   independently before acceptance.
 - Real Codex small code-task changes must stay limited to the fixed smoke helper
   and unit-test files and must be reviewed independently before acceptance.
+- Real Codex multi-file task changes must stay limited to
+  `docs/MERGE_APPROVAL.md`,
+  `src/ai_org/adapters/codex/merge_candidate.py`, and
+  `tests/unit/test_codex_merge_candidate.py`; output is only a pending
+  MergeCandidate summary until a later human-approved merge stage.
 - Workers must return structured results, not free text as the only output.
 - Review Workers must stay independent from the worker that produced the result.
 

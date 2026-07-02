@@ -8,7 +8,9 @@ Mock/DryRun clients and do not call real Codex, real LLMs, real shell execution,
 or paid services. The local real Codex CLI path is a manual smoke test only and
 requires `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`. The local real Codex small
 code-task path is a separate manual test and requires
-`AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true`.
+`AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true`. The controlled real Codex multi-file
+task path is manual-only and requires
+`AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true`.
 
 ## Policy Checks
 
@@ -38,6 +40,16 @@ It also forbids `.git/**`, `.github/**`, `.env*`, dependency locks,
 `pyproject.toml`, migrations, docs, `AGENTS.md`, `README.md`,
 `docker-compose.yml`, and `scripts/**`. Task metadata cannot widen this real
 code-task scope.
+
+When `codex_mode="local_multi_file_task"`, the policy narrows writes to:
+
+- `docs/MERGE_APPROVAL.md`
+- `src/ai_org/adapters/codex/merge_candidate.py`
+- `tests/unit/test_codex_merge_candidate.py`
+
+It forbids repository control files, workflow files, dependency files,
+migrations, scripts, environment files, `AGENTS.md`, `README.md`, and
+production config. Task metadata cannot widen this multi-file scope.
 
 `DiffCollector` records changed, created, deleted, and binary files; detects
 forbidden file changes; detects oversized diffs; and flags simple secret markers
@@ -76,6 +88,10 @@ read-only root filesystem, explicit `/tmp` tmpfs, non-root user
 small real code task, `sandbox_test_profile="real_code_task_smoke"` records a
 fixed `sandbox.test` command after Codex returns. Neither path executes
 task-provided shell commands, and real Codex execution is not moved into Docker.
+For the controlled multi-file task,
+`sandbox_test_profile="real_multi_file_task_merge_candidate"` records a fixed
+`sandbox.test` command that imports the MergeCandidate module and verifies the
+expected test and document files exist.
 
 ## Review Gate
 
@@ -84,12 +100,18 @@ NOT_CONFIGURED real-runtime status, or suspicious diff markers. Failed coding
 tests produce bounded rework until `max_attempts` is reached, after which the
 workflow blocks the task/project.
 
+For MergeCandidate output, the Review Worker rejects summaries that indicate a
+merge, auto-merge, auto-push, missing human approval, or any state other than
+`waiting_merge_approval`.
+
 ## Remaining Risks
 
 - Real Codex smoke execution uses the local user's existing Codex CLI session
   and can consume real Codex service capacity when manually enabled.
 - Real Codex small code-task execution also uses the local user's Codex CLI
   session when manually enabled.
+- Real Codex multi-file execution uses the local user's Codex CLI session when
+  manually enabled and must remain limited to a pending MergeCandidate summary.
 - The smoke test does not expose every failure mode of a production Coding
   Worker.
 - The Docker sandbox foundation is not a production-grade arbitrary-code

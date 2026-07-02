@@ -32,6 +32,7 @@ jobs:
       PYTHONUTF8: "1"
       AI_ORG_ENABLE_REAL_CODEX_SMOKE: "false"
       AI_ORG_ENABLE_REAL_CODEX_CODE_TASK: "false"
+      AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK: "false"
       AI_ORG_USE_EXISTING_POSTGRES: "true"
       AI_ORG_POSTGRES_PASSWORD: ai_org_ci_test_password # pragma: allowlist secret
       AI_ORG_DATABASE_URL: postgresql+psycopg://ai_org_app:ai_org_ci_test_password@localhost:5432/ai_org?connect_timeout=5 # pragma: allowlist secret
@@ -140,7 +141,9 @@ jobs:
           source .venv/bin/activate
           python -m pytest \
             tests/unit/test_worktree_service.py \
+            tests/unit/test_codex_merge_candidate.py \
             tests/unit/test_codex_worker.py \
+            tests/unit/test_merge_candidate_audit.py \
             tests/integration/test_codex_worker_workflow.py \
             tests/e2e/test_api.py \
             -q
@@ -183,6 +186,7 @@ jobs:
             CODEX_WORKER_ACCEPTANCE_REPORT.md CODEX_REAL_SMOKE_TEST_REPORT.md \
             DOCKER_SANDBOX_ACCEPTANCE_REPORT.md \
             CODEX_REAL_CODE_TASK_REPORT.md \
+            CODEX_MULTI_FILE_TASK_MERGE_APPROVAL_REPORT.md \
             CI_FAILED_REPORT.md \
             pyproject.toml requirements.in requirements-lock.txt docker-compose.yml \
             alembic.ini .editorconfig .gitignore \

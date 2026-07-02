@@ -3,9 +3,11 @@
 AI Organization is a two-layer AI organization skeleton. It implements a minimal
 end-to-end workflow with deterministic Mock Workers, a Mock/DryRun Codex Coding
 Worker adapter, explicitly opt-in local Codex CLI smoke and small code-task
-paths, a Docker sandbox foundation for fixed safe command tests, review,
-approvals, audit events, FastAPI query endpoints, PostgreSQL mappings, Alembic
-migrations, and strict LangGraph checkpoint serialization checks.
+paths, an explicitly opt-in controlled multi-file Codex task path that creates
+a human-reviewable merge candidate, a Docker sandbox foundation for fixed safe
+command tests, review, approvals, audit events, FastAPI query endpoints,
+PostgreSQL mappings, Alembic migrations, and strict LangGraph checkpoint
+serialization checks.
 
 Default tests and CI do not call real LLMs, real Codex, OpenHands, Virtuoso,
 HFSS, MATLAB, Redis, Temporal, or user-provided untrusted code. Real Codex CLI
@@ -72,6 +74,19 @@ artifact collection, DockerSandboxRunner fixed test command, and independent
 Review Worker. It still does not auto-commit, merge, push, or modify the main
 branch.
 
+The controlled real multi-file task path is separately gated by
+`AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` and
+`codex_mode="local_multi_file_task"`. It is limited to:
+
+- `docs/MERGE_APPROVAL.md`
+- `src/ai_org/adapters/codex/merge_candidate.py`
+- `tests/unit/test_codex_merge_candidate.py`
+
+This path creates a `merge-candidate` artifact and a
+`merge_candidate.created` audit event after independent Review Worker
+acceptance. The candidate status is `WAITING_MERGE_APPROVAL`; the system still
+does not commit, merge, push, delete worktrees, or deploy.
+
 ## Docker Sandbox Foundation
 
 The repository includes `SandboxRunner` ports plus Mock and Docker adapters for
@@ -115,3 +130,13 @@ $env:AI_ORG_ENABLE_REAL_CODEX_CODE_TASK = "true"
 
 This test also requires Docker to be available. It is skipped by default and is
 not part of CI.
+
+Manual real Codex multi-file merge candidate task:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_multi_file_task.py -q
+```
+
+This test also requires Docker and a ready local Codex CLI session. It is
+skipped by default and is not part of CI.

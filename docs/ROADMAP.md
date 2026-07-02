@@ -24,17 +24,23 @@
   allowed files, task worktree isolation, fixed DockerSandboxRunner validation,
   sanitized artifacts, independent review, no automatic merge, manual local
   validation, and GitHub Actions verification with real Codex disabled.
+- Controlled real Codex multi-file merge candidate path with separate opt-in,
+  fixed allowed files, task worktree isolation, fixed DockerSandboxRunner
+  validation, sanitized artifacts, independent review, `merge_candidate.created`
+  audit event, and no automatic commit, merge, push, PR, or deploy.
 
 ## Next Stage
 
-Controlled multi-file code task and human merge approval:
+Human-approved merge implementation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.
 - Route formatter/test/build commands through the sandbox runner by default.
 - Keep approval gates for shell, network, and file-system permission increases.
 - Continue to avoid untrusted user code and automatic merge until a later stage.
-- Add a human approval boundary before any branch merge.
+- Implement a MergeService that re-checks the MergeCandidate, branch, tests,
+  policy, and explicit human approval before any branch merge.
+- Keep automatic push and deploy out of scope unless separately approved.
 
 ## Later Stages
 
