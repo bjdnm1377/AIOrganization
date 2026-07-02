@@ -20,6 +20,8 @@
 - Local Codex CLI multi-file task opt-in, missing CLI, restricted command
   construction, fixed file scope, MergeCandidate artifact creation, and Docker
   sandbox test-log behavior.
+- Local real Codex main worktree modification detection and Review Worker
+  rejection.
 - MergeCandidate pure data shaping, local absolute path redaction, no merge,
   no auto-push, and application audit-event creation after accepted review.
 - Worktree creation, path traversal defense, and symlink-boundary defense.

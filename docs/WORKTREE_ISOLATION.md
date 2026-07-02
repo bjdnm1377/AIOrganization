@@ -24,6 +24,10 @@ Safety controls:
   pending MergeCandidate summary without automatic merge.
 - No automatic merge is performed.
 - No automatic push is performed.
+- Local real Codex Worker execution compares a main-worktree fingerprint before
+  and after the run. The fingerprint includes tracked diffs, staged diffs, and
+  untracked file content hashes. If the main worktree changes, the result is
+  rejected as `MAIN_WORKTREE_MODIFIED`.
 - API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
   URIs instead of local absolute paths.
 - Docker sandbox integration mounts only the task worktree at `/workspace`; it

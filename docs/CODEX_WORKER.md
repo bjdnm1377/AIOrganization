@@ -91,6 +91,10 @@ Current allowed files are fixed in policy:
 
 Task metadata cannot widen this scope. The same CLI preflight, worktree,
 sanitized command-log, diff collection, and independent review boundaries apply.
+`CodexWorker` also compares a main-worktree fingerprint before and after local
+real Codex execution. The fingerprint includes tracked diffs, staged diffs, and
+untracked file content hashes. If the main worktree changes, the result is
+forced to FAILED with `MAIN_WORKTREE_MODIFIED` and `main_worktree:modified`.
 
 After a successful task result, `CodexWorker` writes a `merge-candidate` JSON
 artifact with logical URI

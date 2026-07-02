@@ -112,6 +112,7 @@ class CodexWorker(Worker):
     def run(self, request: WorkerRequest) -> AgentResult:
         policy = CodingWorkerPolicy.from_task(request.task)
         context = self.worktree_service.create_worktree(request.task, request.attempt_number)
+        main_status_before = self.worktree_service.status_fingerprint()
         prompt = self.prompt_renderer.render(request.task, policy, request.attempt_number)
         prompt_path = self._write_prompt(request.task.task_id, request.attempt_number, prompt)
         sandbox_result = self._run_sandbox_smoke_if_requested(request, context.worktree_path)
@@ -194,6 +195,22 @@ class CodexWorker(Worker):
                 ],
                 metadata={**task_result.metadata, **sandbox_metadata},
             )
+        main_status_after = self.worktree_service.status_fingerprint()
+        if main_status_after != main_status_before:
+            task_result = replace(
+                task_result,
+                status=AgentResultStatus.FAILED,
+                summary="Coding task modified the main worktree outside the task worktree.",
+                risks=[
+                    *task_result.risks,
+                    "Main worktree changed during isolated Codex execution.",
+                ],
+                metadata={
+                    **task_result.metadata,
+                    "main_worktree_modified": True,
+                    "blocked_reason": "MAIN_WORKTREE_MODIFIED",
+                },
+            )
         commands = [
             entry.command
             for entry in task_result.command_logs
@@ -227,6 +244,8 @@ class CodexWorker(Worker):
         ]
         if diff_summary.secret_patterns_detected:
             policy_violations.append("diff:secret_pattern_detected")
+        if task_result.metadata.get("main_worktree_modified") is True:
+            policy_violations.append("main_worktree:modified")
         artifacts = [
             _artifact("codex-prompt", prompt_path, "markdown", request),
             _artifact("codex-command-log", command_log_path, "json", request),

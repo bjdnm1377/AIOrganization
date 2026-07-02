@@ -58,6 +58,12 @@ records command, cwd, exit code, stdout/stderr summary, duration, timeout,
 network request flag, allowed flag, and approval flag. Logs are sanitized before
 persistence.
 
+For local real Codex modes, `CodexWorker` compares a main-worktree fingerprint
+before and after execution. The fingerprint covers tracked diffs, staged diffs,
+and untracked file content hashes. Any main worktree change forces the result to
+FAILED with `MAIN_WORKTREE_MODIFIED` and a `main_worktree:modified` policy
+violation, even if the task worktree diff itself looks valid.
+
 `CodingTaskPromptRenderer` redacts secret-like task text before writing prompt
 artifacts.
 

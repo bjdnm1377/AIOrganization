@@ -621,6 +621,60 @@ def test_codex_worker_creates_merge_candidate_without_merging(
     assert _git(repo, "status", "--short").strip() == ""
 
 
+def test_codex_worker_rejects_main_worktree_modification(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(
+                write_multi_file_task=True,
+                write_main_worktree_file=True,
+            )
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["main_worktree_modified"] is True
+    assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
+    assert "main_worktree:modified" in result.metadata["policy_violations"]
+    assert report.decision == ReviewDecision.REJECTED
+
+
+def test_codex_worker_rejects_main_worktree_dirty_file_mutation(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    dirty_file = repo / "README.md"
+    dirty_file.write_text("dirty before codex\n", encoding="utf-8")
+    before_status = _git(repo, "status", "--short")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(
+                write_multi_file_task=True,
+                mutate_existing_main_worktree_file=True,
+            )
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert before_status == _git(repo, "status", "--short")
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["main_worktree_modified"] is True
+    assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
+    assert "main_worktree:modified" in result.metadata["policy_violations"]
+
+
 def test_codex_worker_does_not_run_code_task_sandbox_test_without_opt_in(
     tmp_path: Path,
 ) -> None:
@@ -932,6 +986,8 @@ class FakeCodexRunner:
         doctor_stdout: str | None = None,
         write_forbidden_file: bool = False,
         write_multi_file_task: bool = False,
+        write_main_worktree_file: bool = False,
+        mutate_existing_main_worktree_file: bool = False,
     ) -> None:
         self.exec_returncode = exec_returncode
         self.timeout_on_exec = timeout_on_exec
@@ -940,6 +996,8 @@ class FakeCodexRunner:
         self.doctor_stdout = doctor_stdout
         self.write_forbidden_file = write_forbidden_file
         self.write_multi_file_task = write_multi_file_task
+        self.write_main_worktree_file = write_main_worktree_file
+        self.mutate_existing_main_worktree_file = mutate_existing_main_worktree_file
         self.calls: list[dict[str, object]] = []
 
     def __call__(
@@ -1012,6 +1070,15 @@ class FakeCodexRunner:
                     target = cwd / name
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(body, encoding="utf-8")
+            if self.write_main_worktree_file:
+                main_root = cwd.parents[3]
+                target = main_root / "src" / "main-worktree-side-effect.txt"
+                target.parent.mkdir(parents=True, exist_ok=True)
+                target.write_text("main worktree modified\n", encoding="utf-8")
+            if self.mutate_existing_main_worktree_file:
+                main_root = cwd.parents[3]
+                target = main_root / "README.md"
+                target.write_text("dirty after codex\n", encoding="utf-8")
             escaped_path = str(cwd / "smoke" / "escaped.txt").replace("\\", "\\\\")
             return subprocess.CompletedProcess(
                 command,

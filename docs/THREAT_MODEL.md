@@ -56,6 +56,8 @@
   files.
 - MergeCandidate summaries explicitly record no merge, no auto-merge, no
   auto-push, required human approval, and `waiting_merge_approval` state.
+- Local real Codex execution is rejected if the main worktree changes during
+  the task, even when the isolated task worktree diff is otherwise valid.
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.

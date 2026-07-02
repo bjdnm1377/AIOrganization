@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import re
 import subprocess
 from dataclasses import dataclass
@@ -52,6 +53,19 @@ class WorktreeService:
     def head_commit(self, worktree_path: Path) -> str:
         return self._git(["rev-parse", "HEAD"], cwd=worktree_path).strip()
 
+    def status_short(self, path: Path | None = None) -> str:
+        return self._git(["status", "--short"], cwd=path or self.repo_root)
+
+    def status_fingerprint(self, path: Path | None = None) -> str:
+        root = path or self.repo_root
+        status = self._git(["status", "--porcelain=v1"], cwd=root)
+        unstaged = self._git(["diff", "--binary", "--"], cwd=root)
+        staged = self._git(["diff", "--binary", "--cached", "--"], cwd=root)
+        untracked_payload = "\n".join(
+            f"{relative}:{_sha256_file(root / relative)}" for relative in _untracked_files(status)
+        )
+        return _sha256_text("\0".join([status, unstaged, staged, untracked_payload]))
+
     def _worktree_path(self, task: Task, attempt_number: int) -> Path:
         project_slug = _slug(task.project_id)
         task_slug = _slug(task.task_id)
@@ -92,3 +106,25 @@ class WorktreeService:
 def _slug(value: str) -> str:
     slug = re.sub(r"[^A-Za-z0-9_.-]+", "-", value).strip(".-")
     return slug or "item"
+
+
+def _untracked_files(status: str) -> list[str]:
+    files: list[str] = []
+    for line in status.splitlines():
+        if line.startswith("?? ") and len(line) > 3:
+            files.append(line[3:].strip('"').replace("\\", "/"))
+    return sorted(files)
+
+
+def _sha256_file(path: Path) -> str:
+    if not path.is_file():
+        return "<not-file>"
+    digest = hashlib.sha256()
+    with path.open("rb") as handle:
+        for chunk in iter(lambda: handle.read(1024 * 1024), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def _sha256_text(value: str) -> str:
+    return hashlib.sha256(value.encode("utf-8")).hexdigest()
