@@ -22,6 +22,11 @@
   sandbox test-log behavior.
 - Local real Codex main worktree modification detection and Review Worker
   rejection.
+- Main-worktree fingerprint coverage for clean trees, tracked diffs, staged
+  diffs, new untracked files, untracked file content changes, and dirty files
+  whose status text does not change.
+- Task-worktree symlink escape rejection and CI checks that real Codex remains
+  disabled in GitHub Actions.
 - MergeCandidate pure data shaping, local absolute path redaction, no merge,
   no auto-push, and application audit-event creation after accepted review.
 - Worktree creation, path traversal defense, and symlink-boundary defense.
@@ -139,8 +144,10 @@ python -m pytest tests/e2e/test_api.py -q
 python -m pytest tests/unit/test_checkpoint_security.py -q
 python -m pytest \
   tests/unit/test_worktree_service.py \
+  tests/unit/test_codex_diff.py \
   tests/unit/test_codex_merge_candidate.py \
   tests/unit/test_codex_worker.py \
+  tests/unit/test_ci_real_codex_disabled.py \
   tests/unit/test_merge_candidate_audit.py \
   tests/integration/test_codex_worker_workflow.py \
   tests/e2e/test_api.py \

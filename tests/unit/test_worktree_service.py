@@ -54,6 +54,77 @@ def test_worktree_service_rejects_symlink_root_outside_repo(tmp_path: Path) -> N
         WorktreeService(repo, worktree_root=link)
 
 
+def test_status_fingerprint_is_stable_for_clean_tree(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+
+    assert service.status_fingerprint() == service.status_fingerprint()
+
+
+def test_status_fingerprint_detects_tracked_file_modification(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+    before = service.status_fingerprint()
+
+    (repo / "README.md").write_text("tracked change\n", encoding="utf-8")
+
+    assert service.status_fingerprint() != before
+
+
+def test_status_fingerprint_detects_staged_change(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+    before = service.status_fingerprint()
+
+    (repo / "README.md").write_text("staged change\n", encoding="utf-8")
+    _git(repo, "add", "README.md")
+
+    assert service.status_fingerprint() != before
+
+
+def test_status_fingerprint_detects_new_untracked_file(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+    before = service.status_fingerprint()
+
+    (repo / "notes.txt").write_text("untracked\n", encoding="utf-8")
+
+    assert service.status_fingerprint() != before
+
+
+def test_status_fingerprint_detects_untracked_content_change_with_same_status(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+    scratch = repo / "scratch" / "notes.txt"
+    scratch.parent.mkdir()
+    scratch.write_text("first\n", encoding="utf-8")
+    first_status = _git(repo, "status", "--porcelain=v1", "--untracked-files=all")
+    first = service.status_fingerprint()
+
+    scratch.write_text("second\n", encoding="utf-8")
+
+    assert _git(repo, "status", "--porcelain=v1", "--untracked-files=all") == first_status
+    assert service.status_fingerprint() != first
+
+
+def test_status_fingerprint_detects_dirty_file_content_change_with_same_status(
+    tmp_path: Path,
+) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    service = WorktreeService(repo)
+    readme = repo / "README.md"
+    readme.write_text("dirty first\n", encoding="utf-8")
+    first_status = _git(repo, "status", "--short")
+    first = service.status_fingerprint()
+
+    readme.write_text("dirty second\n", encoding="utf-8")
+
+    assert _git(repo, "status", "--short") == first_status
+    assert service.status_fingerprint() != first
+
+
 def _task(task_id: str) -> Task:
     return Task(
         task_id=task_id,

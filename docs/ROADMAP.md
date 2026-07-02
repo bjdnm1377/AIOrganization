@@ -27,11 +27,15 @@
 - Controlled real Codex multi-file merge candidate path with separate opt-in,
   fixed allowed files, task worktree isolation, fixed DockerSandboxRunner
   validation, sanitized artifacts, independent review, `merge_candidate.created`
-  audit event, and no automatic commit, merge, push, PR, or deploy.
+  audit event, no automatic commit, merge, push, PR, or deploy, and a
+  fail-closed main-worktree fingerprint guard. The prior real validation found
+  a main-worktree modification and must be re-run successfully before advancing
+  to merge implementation.
 
 ## Next Stage
 
-Human-approved merge implementation:
+Only after the controlled multi-file isolation revalidation passes, the next
+stage may be human-approved merge implementation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.

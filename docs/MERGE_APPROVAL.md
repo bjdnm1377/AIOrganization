@@ -6,6 +6,13 @@ Merge approval is not an automatic merge feature. The implemented capability is
 a read-only, side-effect-free MergeCandidate summary that can be reviewed by a
 human before a later merge implementation exists.
 
+The controlled multi-file Codex validation previously failed because real Codex
+modified the main worktree while also producing a task-worktree
+MergeCandidate. That output is not accepted. Current validation requires the
+main worktree fingerprint to remain identical before and after real Codex
+execution; otherwise the result is `FAILED` with
+`MAIN_WORKTREE_MODIFIED` and no passing merge candidate is produced.
+
 ## MergeCandidate Summary
 
 `build_merge_candidate_summary()` shapes structured data for a candidate:
@@ -34,6 +41,10 @@ The main branch remains unchanged. The task worktree remains a manual review
 surface. Later stages may add a `MergeService`, but it must require explicit
 human approval, re-check policy, re-check tests, and refuse high-risk files
 without a separate approval path.
+
+This document does not authorize merge implementation, automatic merge,
+automatic push, or automatic PR creation. Until a later human-approved stage,
+MergeCandidate artifacts are evidence for review only.
 
 ## High-Risk Files
 

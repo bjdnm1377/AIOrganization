@@ -38,6 +38,7 @@ class DiffCollector:
         self._git(["add", "-N", "--", "."], cwd=worktree_path)
         status = self._git(["status", "--porcelain=v1"], cwd=worktree_path)
         changed_files = _changed_files(status)
+        unsafe_symlink_files = _unsafe_symlink_files(worktree_path, changed_files)
         diff = self._git(["diff", "--binary", "HEAD", "--"], cwd=worktree_path)
         numstat = self._git(["diff", "--numstat", "HEAD", "--"], cwd=worktree_path)
         binary_files = _binary_files(numstat)
@@ -53,7 +54,9 @@ class DiffCollector:
             changed_files=changed_files,
             created_files=_created_files(status),
             deleted_files=_deleted_files(status),
-            forbidden_file_violations=policy.file_violations(changed_files),
+            forbidden_file_violations=sorted(
+                set(policy.file_violations(changed_files)) | set(unsafe_symlink_files)
+            ),
             command_violations=policy.command_violations(commands),
             binary_files=binary_files,
             secret_patterns_detected=_secret_pattern_count(diff),
@@ -115,6 +118,31 @@ def _binary_files(numstat: str) -> list[str]:
         if len(parts) >= 3 and parts[0] == "-" and parts[1] == "-":
             files.append(parts[2].replace("\\", "/"))
     return sorted(set(files))
+
+
+def _unsafe_symlink_files(worktree_path: Path, paths: list[str]) -> list[str]:
+    root = worktree_path.resolve()
+    unsafe: list[str] = []
+    for relative in paths:
+        candidate = worktree_path / relative
+        try:
+            if not candidate.is_symlink():
+                continue
+            target = candidate.resolve(strict=False)
+        except OSError:
+            unsafe.append(relative)
+            continue
+        if not _is_relative_to(target, root):
+            unsafe.append(relative)
+    return sorted(set(unsafe))
+
+
+def _is_relative_to(path: Path, parent: Path) -> bool:
+    try:
+        path.relative_to(parent)
+    except ValueError:
+        return False
+    return True
 
 
 def _secret_pattern_count(diff: str) -> int:

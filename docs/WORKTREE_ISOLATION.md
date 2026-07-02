@@ -25,9 +25,13 @@ Safety controls:
 - No automatic merge is performed.
 - No automatic push is performed.
 - Local real Codex Worker execution compares a main-worktree fingerprint before
-  and after the run. The fingerprint includes tracked diffs, staged diffs, and
+  and after the run. The fingerprint includes `HEAD`, `git status
+  --porcelain=v1 --untracked-files=all`, tracked diffs, staged diffs, and
   untracked file content hashes. If the main worktree changes, the result is
   rejected as `MAIN_WORKTREE_MODIFIED`.
+- Task worktree diffs are collected from the task worktree only. Changed
+  symlinks that resolve outside the task worktree are treated as forbidden file
+  violations.
 - API-visible metadata uses `worktree://codex/{task_id}/attempt-{n}` logical
   URIs instead of local absolute paths.
 - Docker sandbox integration mounts only the task worktree at `/workspace`; it
@@ -71,6 +75,13 @@ migrations, scripts, `AGENTS.md`, `README.md`, `docker-compose.yml`, and
 `.env*`. The task runs in a dedicated worktree. The resulting
 MergeCandidate artifact is a review surface only; it is not committed, merged,
 pushed, or deployed automatically.
+
+A previous real Codex multi-file validation run produced the expected
+MergeCandidate worktree artifact but also modified the main worktree. That run
+failed the stage. The current guard is fail-closed: any tracked, staged, or
+untracked main-worktree content change during local real Codex execution forces
+the task result to `FAILED`, adds `main_worktree:modified`, prevents a passing
+MergeCandidate artifact, and causes independent review rejection.
 
 ## Cleanup
 

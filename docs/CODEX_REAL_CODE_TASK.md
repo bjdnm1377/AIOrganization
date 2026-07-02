@@ -106,7 +106,9 @@ code task.
 - Automatic commit, merge, or push of Codex output.
 - Multi-file merge approval is handled by the separate
   `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` manual path and still stops
-  at a pending MergeCandidate summary.
+  at a pending MergeCandidate summary. The multi-file path has an additional
+  main-worktree fingerprint guard after a prior real Codex run modified the
+  main worktree outside the task worktree.
 - Production arbitrary-code sandboxing.
 - User-provided shell command execution in Docker.
 - OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or Web frontend

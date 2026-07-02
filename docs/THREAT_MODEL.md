@@ -58,6 +58,12 @@
   auto-push, required human approval, and `waiting_merge_approval` state.
 - Local real Codex execution is rejected if the main worktree changes during
   the task, even when the isolated task worktree diff is otherwise valid.
+- The main-worktree fingerprint covers `HEAD`, porcelain status with all
+  untracked files, tracked diffs, staged diffs, and untracked file content
+  hashes. It is intended to catch dirty-file content changes even when status
+  text is unchanged.
+- Changed symlinks inside task worktrees that resolve outside the task worktree
+  are rejected as file-policy violations.
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.
@@ -74,6 +80,8 @@
 
 - Real Codex runtime is implemented only for a controlled local smoke test and
   controlled manual code tasks with fixed file scopes and no automatic merge.
+- A prior real Codex multi-file validation modified the main worktree. That run
+  is blocked and must not be treated as an accepted MergeCandidate.
 - MergeCandidate output can be misleading if reviewed out of context; later
   MergeService work must re-check policy, tests, and human approval before any
   branch operation.

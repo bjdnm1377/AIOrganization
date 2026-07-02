@@ -621,6 +621,31 @@ def test_codex_worker_creates_merge_candidate_without_merging(
     assert _git(repo, "status", "--short").strip() == ""
 
 
+def test_multi_file_task_does_not_expose_main_repo_path_in_prompt_logs_or_artifacts(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_multi_file_task=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    artifact_dir = repo / ".ai_org_artifacts" / task.task_id / "attempt-1"
+    prompt = (artifact_dir / "prompt.md").read_text(encoding="utf-8")
+    command_log = (artifact_dir / "command-log.json").read_text(encoding="utf-8")
+    diff = (artifact_dir / "diff.patch").read_text(encoding="utf-8")
+    assert str(repo) not in prompt
+    assert str(repo) not in command_log
+    assert str(repo) not in diff
+    assert str(repo) not in str(result.metadata["command_logs"])
+    assert str(repo) not in str(result.metadata["merge_candidate"])
+    assert all(str(repo) not in artifact.uri for artifact in result.artifacts)
+
+
 def test_codex_worker_rejects_main_worktree_modification(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -643,8 +668,15 @@ def test_codex_worker_rejects_main_worktree_modification(
     assert result.status == AgentResultStatus.FAILED
     assert result.metadata["main_worktree_modified"] is True
     assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
+    assert result.metadata["changed_files"] == [
+        "docs/MERGE_APPROVAL.md",
+        "src/ai_org/adapters/codex/merge_candidate.py",
+        "tests/unit/test_codex_merge_candidate.py",
+    ]
     assert "main_worktree:modified" in result.metadata["policy_violations"]
+    assert "merge_candidate" not in result.metadata
     assert report.decision == ReviewDecision.REJECTED
+    assert "main_worktree:modified" in report.defects
 
 
 def test_codex_worker_rejects_main_worktree_dirty_file_mutation(
@@ -667,12 +699,15 @@ def test_codex_worker_rejects_main_worktree_dirty_file_mutation(
     task = _task(metadata={"codex_mode": "local_multi_file_task"})
 
     result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
 
     assert before_status == _git(repo, "status", "--short")
     assert result.status == AgentResultStatus.FAILED
     assert result.metadata["main_worktree_modified"] is True
     assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
     assert "main_worktree:modified" in result.metadata["policy_violations"]
+    assert report.decision == ReviewDecision.REJECTED
+    assert "main_worktree:modified" in report.defects
 
 
 def test_codex_worker_does_not_run_code_task_sandbox_test_without_opt_in(

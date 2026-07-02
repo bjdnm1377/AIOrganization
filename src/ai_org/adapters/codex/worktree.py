@@ -58,13 +58,14 @@ class WorktreeService:
 
     def status_fingerprint(self, path: Path | None = None) -> str:
         root = path or self.repo_root
-        status = self._git(["status", "--porcelain=v1"], cwd=root)
+        head = self._git(["rev-parse", "HEAD"], cwd=root).strip()
+        status = self._git(["status", "--porcelain=v1", "--untracked-files=all"], cwd=root)
         unstaged = self._git(["diff", "--binary", "--"], cwd=root)
         staged = self._git(["diff", "--binary", "--cached", "--"], cwd=root)
         untracked_payload = "\n".join(
             f"{relative}:{_sha256_file(root / relative)}" for relative in _untracked_files(status)
         )
-        return _sha256_text("\0".join([status, unstaged, staged, untracked_payload]))
+        return _sha256_text("\0".join([head, status, unstaged, staged, untracked_payload]))
 
     def _worktree_path(self, task: Task, attempt_number: int) -> Path:
         project_slug = _slug(task.project_id)

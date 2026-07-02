@@ -59,10 +59,17 @@ network request flag, allowed flag, and approval flag. Logs are sanitized before
 persistence.
 
 For local real Codex modes, `CodexWorker` compares a main-worktree fingerprint
-before and after execution. The fingerprint covers tracked diffs, staged diffs,
+before and after execution. The fingerprint covers the current `HEAD`,
+`git status --porcelain=v1 --untracked-files=all`, tracked diffs, staged diffs,
 and untracked file content hashes. Any main worktree change forces the result to
 FAILED with `MAIN_WORKTREE_MODIFIED` and a `main_worktree:modified` policy
-violation, even if the task worktree diff itself looks valid.
+violation, even if the task worktree diff itself looks valid. This includes
+dirty files whose `git status --short` output stays unchanged while their
+contents change.
+
+`DiffCollector` runs against the task worktree, not the main worktree. It also
+rejects changed symlinks that resolve outside the task worktree, including
+symlinks that point back to the main repository or other host paths.
 
 `CodingTaskPromptRenderer` redacts secret-like task text before writing prompt
 artifacts.
@@ -118,6 +125,9 @@ merge, auto-merge, auto-push, missing human approval, or any state other than
   session when manually enabled.
 - Real Codex multi-file execution uses the local user's Codex CLI session when
   manually enabled and must remain limited to a pending MergeCandidate summary.
+- A previous real Codex multi-file validation changed the main worktree outside
+  the task worktree. That result is not accepted; the main-worktree fingerprint
+  guard is a fail-closed control and must be revalidated before any merge stage.
 - The smoke test does not expose every failure mode of a production Coding
   Worker.
 - The Docker sandbox foundation is not a production-grade arbitrary-code
