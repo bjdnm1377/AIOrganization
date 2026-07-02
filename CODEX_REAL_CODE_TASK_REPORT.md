@@ -1,10 +1,10 @@
 # Real Codex Small Code Task Report
 
-Status: WAITING FOR USER APPROVAL
+Status: VERIFIED COMPLETE FOR REAL CODEX SMALL CODE TASK
 
-This is the local verification report for the real Codex small code-task stage.
-Remote GitHub Actions verification is still required before this report can be
-promoted to `Status: VERIFIED COMPLETE FOR REAL CODEX SMALL CODE TASK`.
+This report covers the real Codex small code-task stage. Local validation,
+manual real Codex execution, Docker sandbox validation, independent review, and
+remote GitHub Actions verification are complete for the implementation commit.
 
 ## 1. Stage Goal
 
@@ -19,8 +19,8 @@ merge.
 - Local implementation complete.
 - Local default CI-equivalent checks complete.
 - Manual real Codex small code-task test complete.
-- Remote GitHub Actions CI not yet run for these changes.
-- Do not enter the next stage until GitHub Actions passes.
+- Remote GitHub Actions CI passed for the implementation commit.
+- The next stage remains gated by user acceptance.
 
 ## 3. Codex CLI Detection
 
@@ -202,19 +202,36 @@ workflow directly, not a running HTTP server.
 
 ## 16. CI Verification
 
-Remote CI for these changes: pending.
+Remote CI passed for the implementation commit.
 
-Expected workflow:
+- Workflow: `Verification`
+- Run id: `28564711370`
+- Run URL:
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28564711370`
+- Job: `Python 3.12 PostgreSQL verification`
+- Job URL:
+  `https://github.com/bjdnm1377/AIOrganization/actions/runs/28564711370/job/84689511153`
+- Branch: `master`
+- Commit hash: `2c1fefdd77273083a219dcf30d1800a4b3335a82`
+- Trigger: `push`
+- Runner OS: GitHub-hosted Ubuntu runner (`ubuntu-24.04` from workflow)
+- Python baseline: `3.12`
+- PostgreSQL image: `postgres:16.6`
+- Started: `2026-07-02T04:09:19Z`
+- Completed: `2026-07-02T04:11:06Z`
+- Conclusion: `success`
 
-- `.github/workflows/verification.yml`
-- Python 3.12
-- PostgreSQL service `postgres:16.6`
-- real Codex disabled with
-  `AI_ORG_ENABLE_REAL_CODEX_SMOKE=false` and
-  `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=false`
+CI kept real Codex disabled with:
 
-This section must be updated with CI run id, run URL, commit hash, and
-conclusion after push.
+- `AI_ORG_ENABLE_REAL_CODEX_SMOKE=false`
+- `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=false`
+
+Successful CI coverage included requirements-lock verification, ruff format
+check, ruff lint, mypy, Alembic migration against PostgreSQL, PostgreSQL
+repository and checkpoint recovery tests, workflow scenarios A-E, FastAPI e2e,
+checkpoint security tests, Codex Coding Worker isolation tests, Docker sandbox
+integration tests, full pytest, pip-audit, license report, SBOM generation,
+detect-secrets, and `git diff --check`.
 
 ## 17. Known Risks
 
@@ -227,7 +244,6 @@ conclusion after push.
 
 ## 18. Unfinished Content
 
-- Remote GitHub Actions verification for this stage.
 - Automatic worktree retention cleanup.
 - Human merge approval workflow.
 - Production arbitrary-code sandbox hardening.
@@ -240,10 +256,11 @@ multi-file code tasks with explicit human merge approval.
 ## 20. Git State
 
 - Current branch: `master`
-- Current implementation base commit:
-  `f38835c5ea95bb304dfe0a47507d6368951ca96a`
-- Stage commit hash: pending commit.
-- `git status --short`: pending final capture after commit.
+- Stage implementation commit:
+  `2c1fefdd77273083a219dcf30d1800a4b3335a82`
+- Final report update commit: recorded in final response because embedding a
+  commit's own hash changes that hash.
+- `git status --short`: pending final capture after final report commit.
 
 ## 21. User Acceptance Options
 

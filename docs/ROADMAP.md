@@ -20,17 +20,10 @@
 - Docker sandbox foundation with SandboxRunner port, Mock and Docker adapters,
   default disabled network, mount/resource policy checks, fixed safe Docker
   integration tests, and optional CodexWorker sandbox smoke hook.
-
-## Current Stage
-
-Controlled real Codex small code-task path:
-
-- Separate opt-in through `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true`.
-- Fixed allowed files for one smoke helper and one unit-test file.
-- Task worktree isolation, fixed DockerSandboxRunner validation, sanitized
-  artifacts, independent review, and no automatic merge.
-- Manual local validation is required before this stage can be accepted.
-- GitHub Actions must still pass with real Codex disabled.
+- Controlled real Codex small code-task path with separate opt-in, fixed
+  allowed files, task worktree isolation, fixed DockerSandboxRunner validation,
+  sanitized artifacts, independent review, no automatic merge, manual local
+  validation, and GitHub Actions verification with real Codex disabled.
 
 ## Next Stage
 
