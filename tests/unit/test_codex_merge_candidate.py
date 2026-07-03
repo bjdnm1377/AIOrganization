@@ -13,6 +13,7 @@ def test_merge_candidate_summary_handles_empty_changed_files() -> None:
     assert summary["changed_file_count"] == 0
     assert summary["merge_performed"] is False
     assert summary["human_approval_required"] is True
+    assert summary["requires_human_merge_approval"] is True
 
 
 def test_merge_candidate_summary_sorts_and_deduplicates_files() -> None:
@@ -57,3 +58,4 @@ def test_merge_candidate_service_is_pure_data_shaping() -> None:
     assert summary == build_merge_candidate_summary(["b.py", "a.py"], "ok", "ACCEPTED", True)
     assert summary["auto_merge"] is False
     assert summary["auto_push"] is False
+    assert summary["requires_human_merge_approval"] is True

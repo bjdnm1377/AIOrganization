@@ -110,8 +110,9 @@ code task.
   main-worktree fingerprint guard after a prior real Codex run modified the
   main worktree outside the task worktree. A later revalidation kept the main
   worktree stable but timed out during Codex CLI exec; the current recovery
-  keeps the guard and reduces the real multi-file task to code plus unit-test
-  files only.
+  keeps the guard and uses the separate
+  `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true` path to split one
+  logical multi-file task into two controlled single-file Codex steps.
 - Production arbitrary-code sandboxing.
 - User-provided shell command execution in Docker.
 - OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or Web frontend

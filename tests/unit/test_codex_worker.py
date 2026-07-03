@@ -151,6 +151,28 @@ def test_local_multi_file_task_client_does_not_call_runner_without_opt_in(
     assert runner.calls == []
 
 
+def test_local_stepwise_multi_file_task_client_does_not_call_runner_without_opt_in(
+    tmp_path: Path,
+) -> None:
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_stepwise_multi_file_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="do not run",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_stepwise_multi_file_task"
+    assert (
+        result.metadata["blocked_reason"] == "REAL_CODEX_STEPWISE_MULTI_FILE_TASK_OPT_IN_REQUIRED"
+    )
+    assert runner.calls == []
+
+
 def test_local_code_task_client_reports_missing_cli_when_opted_in(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -185,6 +207,25 @@ def test_local_multi_file_task_client_reports_missing_cli_when_opted_in(
 
     assert result.status == AgentResultStatus.NOT_CONFIGURED
     assert result.metadata["codex_mode"] == "local_multi_file_task"
+    assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
+    assert result.metadata["no_real_codex_started"] is True
+
+
+def test_local_stepwise_multi_file_task_client_reports_missing_cli_when_opted_in(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(command="ai-org-missing-codex-command"),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.NOT_CONFIGURED
+    assert result.metadata["codex_mode"] == "local_stepwise_multi_file_task"
     assert result.metadata["blocked_reason"] == "CODEX_CLI_NOT_INSTALLED"
     assert result.metadata["no_real_codex_started"] is True
 
@@ -300,6 +341,36 @@ def test_local_multi_file_task_client_uses_restricted_exec_command(
     assert str(tmp_path) in command
     assert "sk-test-secret" not in " ".join(command)
     assert result.metadata["codex_mode"] == "local_multi_file_task"
+    assert result.metadata["no_real_codex_started"] is False
+
+
+def test_local_stepwise_multi_file_task_client_uses_restricted_exec_command(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    runner = FakeCodexRunner()
+    client = LocalCodexCliClient(runner=runner)
+    request = CodexTaskRequest(
+        task=_task(metadata={"codex_mode": "local_stepwise_multi_file_task"}),
+        attempt_number=1,
+        worktree_path=tmp_path,
+        prompt="Modify only the allowed step file without sk-test-secret.",
+    )
+
+    result = client.start_task(request)
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    exec_call = runner.calls[-1]
+    command = _command_parts(exec_call)
+    assert exec_call["cwd"] == tmp_path
+    assert "--sandbox" in command
+    assert "workspace-write" in command
+    assert "--ask-for-approval" in command
+    assert "on-request" in command
+    assert "--cd" in command
+    assert str(tmp_path) in command
+    assert "sk-test-secret" not in " ".join(command)
+    assert result.metadata["codex_mode"] == "local_stepwise_multi_file_task"
     assert result.metadata["no_real_codex_started"] is False
 
 
@@ -483,6 +554,20 @@ def test_local_multi_file_task_policy_cannot_widen_file_scope() -> None:
     assert policy.file_violations(["docs/MERGE_APPROVAL.md"]) == ["docs/MERGE_APPROVAL.md"]
     assert policy.file_violations(["docs/forbidden.md"]) == ["docs/forbidden.md"]
     assert policy.file_violations(["scripts/run.ps1"]) == ["scripts/run.ps1"]
+
+
+def test_local_stepwise_multi_file_task_policy_cannot_widen_file_scope() -> None:
+    policy = CodingWorkerPolicy.from_task(
+        _task(metadata={"codex_mode": "local_stepwise_multi_file_task", "allowed_files": ["**"]})
+    )
+
+    assert policy.allowed_files == [
+        "src/ai_org/adapters/codex/merge_candidate.py",
+        "tests/unit/test_codex_merge_candidate.py",
+    ]
+    assert policy.file_violations(["docs/MERGE_APPROVAL.md"]) == ["docs/MERGE_APPROVAL.md"]
+    assert policy.file_violations(["scripts/run.ps1"]) == ["scripts/run.ps1"]
+    assert policy.file_violations(["src/ai_org/adapters/codex/merge_candidate.py"]) == []
 
 
 def test_local_cli_doctor_timeout_fails_closed(
@@ -683,6 +768,231 @@ def test_codex_worker_creates_merge_candidate_without_merging(
     assert len(merge_artifacts) == 1
     assert merge_artifacts[0].uri.startswith("artifact://codex/task_codex/attempt-1/")
     assert _git(repo, "status", "--short").strip() == ""
+
+
+def test_stepwise_multi_file_task_splits_into_single_file_steps(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    runner = FakeCodexRunner(write_stepwise_task=True)
+    sandbox_runner = MockSandboxRunner()
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=runner, timeout_seconds=7),
+        sandbox_runner=sandbox_runner,
+    )
+    task = _task(
+        metadata={
+            "codex_mode": "local_stepwise_multi_file_task",
+            "sandbox_test_profile": "real_stepwise_multi_file_task_merge_candidate",
+        }
+    )
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+    exec_calls = [call for call in runner.calls if "exec" in _command_parts(call)]
+
+    assert result.status == AgentResultStatus.SUCCEEDED
+    assert report.decision == ReviewDecision.ACCEPTED
+    assert len(exec_calls) == 2
+    assert exec_calls[0]["cwd"] != repo
+    assert exec_calls[1]["cwd"] != repo
+    assert "src/ai_org/adapters/codex/merge_candidate.py" in str(exec_calls[0]["stdin"])
+    assert "tests/unit/test_codex_merge_candidate.py" not in str(exec_calls[0]["stdin"])
+    assert "tests/unit/test_codex_merge_candidate.py" in str(exec_calls[1]["stdin"])
+    assert "src/ai_org/adapters/codex/merge_candidate.py" not in str(exec_calls[1]["stdin"])
+    assert str(repo) not in str(exec_calls[0]["stdin"])
+    assert str(repo) not in str(exec_calls[1]["stdin"])
+    assert result.metadata["changed_files"] == [
+        "src/ai_org/adapters/codex/merge_candidate.py",
+        "tests/unit/test_codex_merge_candidate.py",
+    ]
+    assert result.metadata["policy_violations"] == []
+    assert result.metadata["step_count"] == 2
+    steps = result.metadata["stepwise_steps"]
+    assert isinstance(steps, list)
+    assert steps[0]["allowed_files"] == ["src/ai_org/adapters/codex/merge_candidate.py"]
+    assert steps[1]["allowed_files"] == ["tests/unit/test_codex_merge_candidate.py"]
+    assert steps[0]["timeout_seconds"] == 7
+    assert steps[1]["timeout_seconds"] == 7
+    assert result.metadata["sandbox_test_status"] == "SUCCEEDED"
+    assert sandbox_runner.requests[0].command == (
+        "python",
+        "-m",
+        "pytest",
+        "tests/unit/test_codex_merge_candidate.py",
+        "-q",
+    )
+    candidate = result.metadata["merge_candidate"]
+    assert isinstance(candidate, dict)
+    assert candidate["requires_human_merge_approval"] is True
+    assert candidate["auto_merge"] is False
+    assert candidate["auto_push"] is False
+    assert result.metadata["merge_candidate_status"] == "WAITING_MERGE_APPROVAL"
+    assert _git(repo, "status", "--short").strip() == ""
+
+
+def test_stepwise_step1_cannot_modify_test_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(
+                write_stepwise_task=True,
+                stepwise_step1_modifies_test=True,
+            )
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_STEP_FILE_POLICY_VIOLATION"
+    assert result.metadata["failed_step_index"] == 1
+    assert "file:tests/unit/test_codex_merge_candidate.py" in result.metadata["policy_violations"]
+    assert "merge_candidate" not in result.metadata
+    assert report.decision == ReviewDecision.REJECTED
+
+
+def test_stepwise_step2_cannot_modify_source_file(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(
+                write_stepwise_task=True,
+                stepwise_step2_modifies_source=True,
+            )
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_STEP_FILE_POLICY_VIOLATION"
+    assert result.metadata["failed_step_index"] == 2
+    assert (
+        "file:src/ai_org/adapters/codex/merge_candidate.py" in result.metadata["policy_violations"]
+    )
+    assert "merge_candidate" not in result.metadata
+
+
+def test_stepwise_forbidden_file_change_fails_logical_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(write_stepwise_task=True, write_forbidden_file=True)
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_STEP_FILE_POLICY_VIOLATION"
+    assert "file:docs/forbidden.md" in result.metadata["policy_violations"]
+    assert "merge_candidate" not in result.metadata
+
+
+def test_stepwise_timeout_fails_without_merge_candidate(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(write_stepwise_task=True, timeout_step=2),
+            timeout_seconds=5,
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+    before = worker.worktree_service.status_fingerprint()
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert worker.worktree_service.status_fingerprint() == before
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "CODEX_STEP_TIMEOUT"
+    assert result.metadata["failed_step_index"] == 2
+    assert result.metadata["timeout_type"] == "CODEX_STEP_TIMEOUT"
+    assert "merge_candidate" not in result.metadata
+    assert result.metadata["command_logs"][-1]["timeout_type"] == "CODEX_STEP_TIMEOUT"
+    assert result.metadata["command_logs"][-1]["process_tree_killed"] is True
+    assert report.decision == ReviewDecision.REJECTED
+    assert "codex:timeout" in report.defects
+
+
+def test_stepwise_main_worktree_modification_fails_logical_task(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(
+            runner=FakeCodexRunner(
+                write_stepwise_task=True,
+                write_main_worktree_file=True,
+            )
+        ),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+    report = MockReviewWorker().review(task, result, 1)
+
+    assert result.status == AgentResultStatus.FAILED
+    assert result.metadata["blocked_reason"] == "MAIN_WORKTREE_MODIFIED"
+    assert result.metadata["failed_step_index"] == 1
+    assert "main_worktree:modified" in result.metadata["policy_violations"]
+    assert "merge_candidate" not in result.metadata
+    assert report.decision == ReviewDecision.REJECTED
+
+
+def test_stepwise_prompt_logs_and_artifacts_are_sanitized(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK", "true")
+    repo = _git_repo(tmp_path / "repo")
+    worker = CodexWorker(
+        repo,
+        client=LocalCodexCliClient(runner=FakeCodexRunner(write_stepwise_task=True)),
+    )
+    task = _task(metadata={"codex_mode": "local_stepwise_multi_file_task"})
+
+    result = worker.run(WorkerRequest(task=task, attempt_number=1, structured_input={}))
+
+    artifact_dir = repo / ".ai_org_artifacts" / task.task_id / "attempt-1"
+    prompt = (artifact_dir / "prompt.md").read_text(encoding="utf-8")
+    step_1_prompt = (artifact_dir / "step-1-prompt.md").read_text(encoding="utf-8")
+    step_2_prompt = (artifact_dir / "step-2-prompt.md").read_text(encoding="utf-8")
+    command_log = (artifact_dir / "command-log.json").read_text(encoding="utf-8")
+    diff = (artifact_dir / "diff.patch").read_text(encoding="utf-8")
+    assert str(repo) not in prompt
+    assert str(repo) not in step_1_prompt
+    assert str(repo) not in step_2_prompt
+    assert str(repo) not in command_log
+    assert str(repo) not in diff
+    assert str(Path.home()) not in command_log
+    assert "SECRET_VALUE" not in command_log
+    assert str(repo) not in str(result.metadata["merge_candidate"])
+    assert all(str(repo) not in artifact.uri for artifact in result.artifacts)
 
 
 def test_codex_worker_timeout_keeps_main_fingerprint_and_no_merge_candidate(
@@ -1112,6 +1422,10 @@ class FakeCodexRunner:
         doctor_stdout: str | None = None,
         write_forbidden_file: bool = False,
         write_multi_file_task: bool = False,
+        write_stepwise_task: bool = False,
+        timeout_step: int | None = None,
+        stepwise_step1_modifies_test: bool = False,
+        stepwise_step2_modifies_source: bool = False,
         write_main_worktree_file: bool = False,
         mutate_existing_main_worktree_file: bool = False,
     ) -> None:
@@ -1122,9 +1436,14 @@ class FakeCodexRunner:
         self.doctor_stdout = doctor_stdout
         self.write_forbidden_file = write_forbidden_file
         self.write_multi_file_task = write_multi_file_task
+        self.write_stepwise_task = write_stepwise_task
+        self.timeout_step = timeout_step
+        self.stepwise_step1_modifies_test = stepwise_step1_modifies_test
+        self.stepwise_step2_modifies_source = stepwise_step2_modifies_source
         self.write_main_worktree_file = write_main_worktree_file
         self.mutate_existing_main_worktree_file = mutate_existing_main_worktree_file
         self.calls: list[dict[str, object]] = []
+        self.exec_count = 0
 
     def __call__(
         self, command: list[str], cwd: Path, stdin: str | None, timeout_seconds: int
@@ -1153,7 +1472,8 @@ class FakeCodexRunner:
                 stderr="" if self.doctor_returncode == 0 else "doctor failed",
             )
         if "exec" in command and command[0] == "codex":
-            if self.timeout_on_exec:
+            self.exec_count += 1
+            if self.timeout_on_exec or self.timeout_step == self.exec_count:
                 raise CodexTimeoutExpired(
                     command,
                     timeout_seconds,
@@ -1202,6 +1522,15 @@ class FakeCodexRunner:
                     target = cwd / name
                     target.parent.mkdir(parents=True, exist_ok=True)
                     target.write_text(body, encoding="utf-8")
+            if self.write_stepwise_task:
+                if self.exec_count == 1:
+                    _write_fake_merge_candidate_source(cwd)
+                    if self.stepwise_step1_modifies_test:
+                        _write_fake_merge_candidate_test(cwd, body="# forbidden step 1 test edit\n")
+                elif self.exec_count == 2:
+                    _write_fake_merge_candidate_test(cwd)
+                    if self.stepwise_step2_modifies_source:
+                        _write_fake_merge_candidate_source(cwd, marker="step-2-forbidden")
             if self.write_main_worktree_file:
                 main_root = cwd.parents[3]
                 target = main_root / "src" / "main-worktree-side-effect.txt"
@@ -1227,3 +1556,51 @@ class FakeCodexRunner:
                 else f"execution failed at {Path.home() / '.codex' / 'auth.json'}",
             )
         raise AssertionError(f"Unexpected command: {command}")
+
+
+def _write_fake_merge_candidate_source(cwd: Path, *, marker: str = "human-approval-only") -> None:
+    target = cwd / "src" / "ai_org" / "adapters" / "codex" / "merge_candidate.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        (
+            "from __future__ import annotations\n\n"
+            "import re\n\n"
+            "WINDOWS_ABSOLUTE_PATH = re.compile(r'(?i)^[A-Z]:(?:/|\\\\\\\\)')\n"
+            f"MERGE_CANDIDATE_MANUAL_TASK_MARKER = {marker!r}\n\n"
+            "def build_merge_candidate_summary(changed_files, diff_summary, "
+            "review_decision, tests_passed):\n"
+            "    sanitized = sorted({path.replace('\\\\\\\\', '/') for path in changed_files})\n"
+            "    return {\n"
+            "        'changed_files': sanitized,\n"
+            "        'changed_file_count': len(sanitized),\n"
+            "        'diff_summary': ' '.join(str(diff_summary).split()),\n"
+            "        'review_decision': ' '.join(str(review_decision).split()).lower(),\n"
+            "        'tests_passed': bool(tests_passed),\n"
+            "        'merge_performed': False,\n"
+            "        'auto_merge': False,\n"
+            "        'auto_push': False,\n"
+            "        'human_approval_required': True,\n"
+            "        'requires_human_merge_approval': True,\n"
+            "        'approval_state': 'waiting_merge_approval',\n"
+            "    }\n"
+        ),
+        encoding="utf-8",
+    )
+
+
+def _write_fake_merge_candidate_test(cwd: Path, *, body: str | None = None) -> None:
+    target = cwd / "tests" / "unit" / "test_codex_merge_candidate.py"
+    target.parent.mkdir(parents=True, exist_ok=True)
+    target.write_text(
+        body
+        or (
+            "from ai_org.adapters.codex.merge_candidate import "
+            "build_merge_candidate_summary\n\n"
+            "def test_summary_sorts_files():\n"
+            "    summary = build_merge_candidate_summary(['b.py', 'a.py'], "
+            "'ok', 'accepted', True)\n"
+            "    assert summary['changed_files'] == ['a.py', 'b.py']\n"
+            "    assert summary['requires_human_merge_approval'] is True\n"
+        ),
+        encoding="utf-8",
+    )

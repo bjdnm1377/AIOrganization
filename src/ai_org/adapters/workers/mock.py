@@ -165,7 +165,10 @@ def _review_coding_result(
     policy_violations = _string_list(result.metadata.get("policy_violations"))
     failed_tests = [record.name for record in result.tests_run if record.status == "failed"]
     not_configured = result.status == AgentResultStatus.NOT_CONFIGURED
-    runtime_blocked = result.metadata.get("blocked_reason") == "CODEX_CLI_TIMEOUT"
+    runtime_blocked = result.metadata.get("blocked_reason") in {
+        "CODEX_CLI_TIMEOUT",
+        "CODEX_STEP_TIMEOUT",
+    }
     if policy_violations or not_configured or runtime_blocked:
         defects = policy_violations.copy()
         if not_configured:
@@ -250,6 +253,8 @@ def _merge_candidate_defects(value: object) -> list[str]:
             defects.append(f"merge_candidate:{key}_not_false")
     if value.get("human_approval_required") is not True:
         defects.append("merge_candidate:human_approval_not_required")
+    if value.get("requires_human_merge_approval", True) is not True:
+        defects.append("merge_candidate:requires_human_merge_approval_not_true")
     if value.get("approval_state") != "waiting_merge_approval":
         defects.append("merge_candidate:not_waiting_merge_approval")
     return defects

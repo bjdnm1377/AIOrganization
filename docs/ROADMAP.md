@@ -33,10 +33,20 @@
   fingerprint stable but timed out during Codex CLI exec, so the current stage
   is timeout reduction and revalidation before any merge implementation.
 
+## Current Stage
+
+- Controlled real Codex stepwise multi-file orchestration. One logical
+  multi-file task is split into fixed single-file Codex steps with independent
+  allowed files, forbidden files, timeout diagnostics, main-worktree
+  fingerprint checks, task-worktree dirty-file checks, fixed sandbox validation,
+  independent review, and pending MergeCandidate artifact generation only.
+  This stage must pass local real stepwise validation and CI before any
+  human-approved merge implementation begins.
+
 ## Next Stage
 
-Only after the controlled multi-file timeout and isolation revalidation passes,
-the next stage may be human-approved merge implementation:
+Only after the controlled stepwise multi-file timeout and isolation
+revalidation passes, the next stage may be human-approved merge implementation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.

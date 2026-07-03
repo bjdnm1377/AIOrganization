@@ -19,6 +19,15 @@ result is also not accepted. Timeout is classified as `CODEX_CLI_TIMEOUT`, does
 not create an accepted MergeCandidate, and must be resolved before any merge
 approval implementation begins.
 
+The current recovery path does not increase timeout indefinitely or widen
+permissions. Instead, `codex_mode="local_stepwise_multi_file_task"` splits one
+logical multi-file task into fixed single-file Codex steps. Each step has one
+allowed file, an independent forbidden-file policy, a main-worktree fingerprint
+before/after check, task-worktree dirty-file comparison, timeout diagnostics,
+and process cleanup evidence. A failed step prevents an accepted
+MergeCandidate. This is still merge-candidate generation only, not merge
+approval execution.
+
 ## MergeCandidate Summary
 
 `build_merge_candidate_summary()` shapes structured data for a candidate:
@@ -30,6 +39,7 @@ approval implementation begins.
 - `auto_merge` is always `False`;
 - `auto_push` is always `False`;
 - `human_approval_required` is always `True`;
+- `requires_human_merge_approval` is always `True`;
 - `approval_state` is `waiting_merge_approval`.
 
 The function does not read files, write files, execute shell commands, call the
@@ -50,6 +60,11 @@ The main branch remains unchanged. The task worktree remains a manual review
 surface. Later stages may add a `MergeService`, but it must require explicit
 human approval, re-check policy, re-check tests, and refuse high-risk files
 without a separate approval path.
+
+For the stepwise path, the final MergeCandidate may be created only after both
+single-file steps and the fixed sandbox test pass. It records logical worktree
+URI, branch name, base commit, head state, `requires_human_merge_approval=True`,
+`auto_merge=False`, and `auto_push=False`.
 
 This document does not authorize merge implementation, automatic merge,
 automatic push, or automatic PR creation. Until a later human-approved stage,

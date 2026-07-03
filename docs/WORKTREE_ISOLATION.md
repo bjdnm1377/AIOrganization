@@ -22,6 +22,10 @@ Safety controls:
 - The main working tree is not modified by the manual real Codex multi-file
   task; changed files are collected from the task worktree and represented as a
   pending MergeCandidate summary without automatic merge.
+- The manual real Codex stepwise multi-file task also runs only in the task
+  worktree. It splits one logical multi-file task into multiple single-file
+  Codex CLI invocations and re-checks the main-worktree fingerprint after each
+  step.
 - No automatic merge is performed.
 - No automatic push is performed.
 - Local real Codex Worker execution compares a main-worktree fingerprint before
@@ -88,6 +92,27 @@ out during Codex CLI exec before producing a task-worktree diff. Timeout is now
 reported as `CODEX_CLI_TIMEOUT` with diagnostic command-log metadata and
 process-tree cleanup status. It remains a blocked result and cannot advance to
 merge approval.
+
+## Real Codex Stepwise Multi-File Merge Candidate Scope
+
+For `codex_mode="local_stepwise_multi_file_task"`, the logical task still has
+the same two-file final scope:
+
+- `src/ai_org/adapters/codex/merge_candidate.py`
+- `tests/unit/test_codex_merge_candidate.py`
+
+The worker executes that logical task as two real Codex steps. Step 1 may only
+change the source file and Step 2 may only change the test file. Each step has
+its own allowed-file policy, forbidden-file policy, timeout diagnostics, main
+worktree fingerprint before/after values, and task-worktree dirty-file
+fingerprint comparison. A step that modifies any other file fails the logical
+task, prevents an accepted MergeCandidate, and is rejected by review. A step
+timeout is classified as `CODEX_STEP_TIMEOUT` and also prevents a passing
+MergeCandidate.
+
+The stepwise path does not merge, commit, push, open PRs, delete worktrees, or
+modify the main branch. It produces only a pending MergeCandidate artifact after
+all steps and the fixed sandbox validation pass.
 
 ## Cleanup
 

@@ -41,6 +41,7 @@ WINDOWS_ABSOLUTE_PATH = re.compile(r"(?i)\b[A-Z]:(?:\\\\|\\)[^\"'\s,}\]]+")
 POSIX_ABSOLUTE_PATH = re.compile(r"(?<![\w])/(?:Users|home|tmp|var|private|mnt)/[^\s\"',}\]]+")
 CODE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_CODE_TASK"
 MULTI_FILE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK"
+STEPWISE_MULTI_FILE_TASK_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK"
 
 
 class CodexTimeoutExpired(subprocess.TimeoutExpired):
@@ -541,6 +542,17 @@ def _not_configured_result(
 
 def _opt_in_config(request: CodexTaskRequest, smoke_env_var: str) -> _OptInConfig:
     mode = _metadata_string(request.task.metadata, "codex_mode", "local_cli")
+    if mode == "local_stepwise_multi_file_task":
+        return _OptInConfig(
+            mode=mode,
+            env_var=STEPWISE_MULTI_FILE_TASK_ENV_VAR,
+            blocked_reason="REAL_CODEX_STEPWISE_MULTI_FILE_TASK_OPT_IN_REQUIRED",
+            disabled_summary=(
+                "Local Codex CLI stepwise multi-file task execution is disabled; "
+                "explicit opt-in is required."
+            ),
+            task_label="stepwise multi-file step",
+        )
     if mode == "local_multi_file_task":
         return _OptInConfig(
             mode=mode,

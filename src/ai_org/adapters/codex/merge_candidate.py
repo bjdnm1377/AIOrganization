@@ -44,6 +44,7 @@ def build_merge_candidate_summary(
         "auto_merge": False,
         "auto_push": False,
         "human_approval_required": True,
+        "requires_human_merge_approval": True,
         "approval_state": "waiting_merge_approval",
     }
 

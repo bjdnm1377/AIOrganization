@@ -28,6 +28,11 @@ REAL_MULTI_FILE_TASK_ALLOWED_FILES = [
     "tests/unit/test_codex_merge_candidate.py",
 ]
 
+REAL_STEPWISE_MULTI_FILE_TASK_ALLOWED_FILES = [
+    "src/ai_org/adapters/codex/merge_candidate.py",
+    "tests/unit/test_codex_merge_candidate.py",
+]
+
 REAL_CLI_FORBIDDEN_FILES = [
     ".git/**",
     ".github/**",
@@ -76,6 +81,22 @@ REAL_MULTI_FILE_TASK_FORBIDDEN_FILES = [
     "scripts/**",
 ]
 
+REAL_STEPWISE_MULTI_FILE_TASK_FORBIDDEN_FILES = [
+    ".git/**",
+    ".github/**",
+    ".env",
+    ".env.*",
+    "requirements-lock.txt",
+    "requirements.in",
+    "pyproject.toml",
+    "alembic/**",
+    "docs/**",
+    "AGENTS.md",
+    "README.md",
+    "docker-compose.yml",
+    "scripts/**",
+]
+
 
 @dataclass(frozen=True, slots=True)
 class CodingWorkerPolicy:
@@ -102,6 +123,11 @@ class CodingWorkerPolicy:
             *(REAL_CLI_FORBIDDEN_FILES if mode == "local_cli" else []),
             *(REAL_CODE_TASK_FORBIDDEN_FILES if mode == "local_code_task" else []),
             *(REAL_MULTI_FILE_TASK_FORBIDDEN_FILES if mode == "local_multi_file_task" else []),
+            *(
+                REAL_STEPWISE_MULTI_FILE_TASK_FORBIDDEN_FILES
+                if mode == "local_stepwise_multi_file_task"
+                else []
+            ),
             *_string_list(metadata.get("forbidden_files"), default=[]),
         ]
         return cls(
@@ -200,8 +226,15 @@ def _default_allowed_files(mode: str) -> list[str]:
         return list(REAL_CODE_TASK_ALLOWED_FILES)
     if mode == "local_multi_file_task":
         return list(REAL_MULTI_FILE_TASK_ALLOWED_FILES)
+    if mode == "local_stepwise_multi_file_task":
+        return list(REAL_STEPWISE_MULTI_FILE_TASK_ALLOWED_FILES)
     return ["**"]
 
 
 def _is_real_cli_mode(mode: str) -> bool:
-    return mode in {"local_cli", "local_code_task", "local_multi_file_task"}
+    return mode in {
+        "local_cli",
+        "local_code_task",
+        "local_multi_file_task",
+        "local_stepwise_multi_file_task",
+    }

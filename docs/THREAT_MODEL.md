@@ -38,6 +38,8 @@
   `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true` opt-in.
 - Local real Codex CLI multi-file execution requires separate explicit
   `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` opt-in.
+- Local real Codex CLI stepwise multi-file execution requires separate explicit
+  `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true` opt-in.
 - Local real Codex CLI smoke execution uses `workspace-write` sandbox,
   `on-request` approval, and `--cd <worktree>`.
 - Coding policy detects forbidden file changes, disallowed commands, suspicious
@@ -54,10 +56,17 @@
   `tests/unit/test_codex_merge_candidate.py`, and forbids docs, workflow,
   dependency, migration, script, repository-control, and credential-bearing
   files.
+- `local_stepwise_multi_file_task` keeps the same logical final scope but
+  executes fixed single-file steps. Step 1 may only change the source file and
+  forbids tests; Step 2 may only change the test file and forbids source. Each
+  step is checked independently before the next step can run.
 - MergeCandidate summaries explicitly record no merge, no auto-merge, no
   auto-push, required human approval, and `waiting_merge_approval` state.
 - Local real Codex execution is rejected if the main worktree changes during
   the task, even when the isolated task worktree diff is otherwise valid.
+- Stepwise local real Codex execution records and compares the main-worktree
+  fingerprint before and after every step. A per-step mismatch fails the
+  logical task as `MAIN_WORKTREE_MODIFIED`.
 - The main-worktree fingerprint covers `HEAD`, porcelain status with all
   untracked files, tracked diffs, staged diffs, and untracked file content
   hashes. It is intended to catch dirty-file content changes even when status
@@ -67,6 +76,9 @@
 - Prompt, diff, and command logs are sanitized before artifact persistence.
 - Command logs expose logical `worktree://...` URIs and mask raw local worktree
   paths in Codex JSONL summaries.
+- Stepwise per-step timeouts are classified as `CODEX_STEP_TIMEOUT`, record the
+  failed step index and JSONL/process-cleanup diagnostics, stop later steps, and
+  prevent an accepted MergeCandidate.
 - `SandboxRunner` isolates future command execution behind a port.
 - `DockerSandboxRunner` defaults to non-root, disabled network, `cap-drop=ALL`,
   `no-new-privileges`, read-only root filesystem, explicit tmpfs, task worktree
@@ -86,6 +98,9 @@
   stable but timed out during CLI exec. Timeout is blocked as
   `CODEX_CLI_TIMEOUT`; it cannot create an accepted MergeCandidate and must not
   be solved by increasing Codex permissions.
+- The stepwise multi-file recovery path reduces task size but does not remove
+  the risk of local Codex CLI timeout or transport failure. A step timeout is
+  blocked and must not be rewritten as a successful MergeCandidate.
 - MergeCandidate output can be misleading if reviewed out of context; later
   MergeService work must re-check policy, tests, and human approval before any
   branch operation.

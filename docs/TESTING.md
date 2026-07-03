@@ -20,10 +20,17 @@
 - Local Codex CLI multi-file task opt-in, missing CLI, restricted command
   construction, fixed file scope, MergeCandidate artifact creation, and Docker
   sandbox test-log behavior.
+- Local Codex CLI stepwise multi-file task opt-in, missing CLI, restricted
+  command construction, fixed logical file scope, per-step single-file scope,
+  per-step timeout classification, per-step main-worktree fingerprint checks,
+  MergeCandidate artifact creation, and Docker sandbox test-log behavior.
 - Codex CLI exec timeout classification as `CODEX_CLI_TIMEOUT`, timeout
   command-log diagnostics, process-tree cleanup metadata, deterministic
   validation blocking, Review Worker rejection, and no accepted MergeCandidate
   artifact after timeout.
+- Codex step timeout classification as `CODEX_STEP_TIMEOUT`, failed step index
+  recording, process-tree cleanup metadata, Review Worker rejection, and no
+  accepted MergeCandidate artifact after timeout.
 - Local real Codex main worktree modification detection and Review Worker
   rejection.
 - Main-worktree fingerprint coverage for clean trees, tracked diffs, staged
@@ -37,8 +44,8 @@
 - Coding Worker diff, artifact, command-log, review, rework, and idempotency.
 - Sandbox policy, MockSandboxRunner, DockerSandboxRunner, and optional
   CodexWorker sandbox hook behavior.
-- Manual real Codex CLI smoke, small code-task, and multi-file merge candidate
-  tests, skipped by default.
+- Manual real Codex CLI smoke, small code-task, single-call multi-file, and
+  stepwise multi-file merge candidate tests, skipped by default.
 
 ## Local Commands
 
@@ -114,6 +121,31 @@ three-file version. Documentation updates are not included in the real Codex
 task; this reduces timeout risk without increasing permissions or relaxing file
 policy.
 
+The latest single-call real multi-file run still timed out before producing a
+diff. That result remains blocked and is not reported as a passing
+MergeCandidate.
+
+## Manual Real Codex Stepwise Multi-File Merge Candidate Task
+
+The stepwise multi-file task test is not part of default pytest or CI
+execution. It requires a local Codex CLI session, Docker, and explicit opt-in:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_stepwise_multi_file_task.py -q
+```
+
+The test runs `codex_mode="local_stepwise_multi_file_task"` through the normal
+WorkerRegistry and workflow. `CodexWorker` splits the logical task into two
+real Codex CLI invocations: one source-file step and one test-file step. Each
+step uses the task worktree as cwd/`--cd`, one allowed file, independent
+forbidden files, timeout diagnostics, and a main-worktree fingerprint gate. If
+both steps succeed, `DockerSandboxRunner` runs
+`python -m pytest tests/unit/test_codex_merge_candidate.py -q`, the independent
+Review Worker must accept, and the application records a pending
+MergeCandidate audit event. The test asserts no automatic merge or push and no
+main-branch modification.
+
 ## PostgreSQL Integration
 
 Tests marked `postgres` run in two modes:
@@ -139,7 +171,9 @@ GitHub Actions, Docker unavailability fails the Docker sandbox integration step.
 
 ## CI Verification
 
-`.github/workflows/verification.yml` uses Python 3.12 and runs:
+`.github/workflows/verification.yml` uses Python 3.12, sets all real Codex
+opt-ins to `false` including
+`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK`, and runs:
 
 ```bash
 python -m ruff format --check .
@@ -172,6 +206,6 @@ a license report and CycloneDX SBOM, runs `detect-secrets`, and runs
 
 Tests do not call real LLMs, real Codex, OpenHands, paid services, or
 user-provided untrusted code. Codex Worker tests use only `MockCodexClient`,
-`DryRunCodexClient`, and NOT_CONFIGURED `LocalCodexCliClient` behavior unless
-the manual smoke, small code-task, or multi-file merge candidate tests are
-explicitly opted in locally.
+`DryRunCodexClient`, and NOT_CONFIGURED or fake-runner `LocalCodexCliClient`
+behavior unless the manual smoke, small code-task, single-call multi-file, or
+stepwise multi-file merge candidate tests are explicitly opted in locally.

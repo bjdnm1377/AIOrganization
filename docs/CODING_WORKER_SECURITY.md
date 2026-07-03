@@ -10,7 +10,9 @@ requires `AI_ORG_ENABLE_REAL_CODEX_SMOKE=true`. The local real Codex small
 code-task path is a separate manual test and requires
 `AI_ORG_ENABLE_REAL_CODEX_CODE_TASK=true`. The controlled real Codex multi-file
 task path is manual-only and requires
-`AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true`.
+`AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true`. The controlled real Codex
+stepwise multi-file path is also manual-only and requires
+`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true`.
 
 ## Policy Checks
 
@@ -50,6 +52,12 @@ It forbids repository control files, workflow files, dependency files,
 migrations, docs, scripts, environment files, `AGENTS.md`, `README.md`, and
 production config. Task metadata cannot widen this multi-file scope.
 
+When `codex_mode="local_stepwise_multi_file_task"`, the logical final scope is
+the same two files, but `CodexWorker` executes fixed single-file steps. Step 1
+may modify only `src/ai_org/adapters/codex/merge_candidate.py` and forbids
+`tests/**`; Step 2 may modify only `tests/unit/test_codex_merge_candidate.py`
+and forbids `src/**`. Task metadata cannot widen either step.
+
 `DiffCollector` records changed, created, deleted, and binary files; detects
 forbidden file changes; detects oversized diffs; and flags simple secret markers
 in diffs. Diff artifacts are sanitized before writing. `CommandLogCollector`
@@ -88,7 +96,10 @@ event type, whether an approval request was observed, whether network was
 requested, and whether the process tree was killed. Timeout results keep
 running the main-worktree fingerprint post-check, do not produce accepted
 MergeCandidate artifacts, and are rejected by the Review Worker with
-`codex:timeout`.
+`codex:timeout`. In the stepwise multi-file path, a per-step Codex exec timeout
+is normalized to `CODEX_STEP_TIMEOUT`, records the failed step index, stops all
+later steps, keeps the main-worktree fingerprint post-check, and is rejected by
+the Review Worker.
 
 ## Docker Sandbox Foundation
 
@@ -111,7 +122,12 @@ task-provided shell commands, and real Codex execution is not moved into Docker.
 For the controlled multi-file task,
 `sandbox_test_profile="real_multi_file_task_merge_candidate"` records a fixed
 `sandbox.test` command that imports the MergeCandidate module and verifies the
-expected test and document files exist.
+expected test file exists.
+
+For the controlled stepwise multi-file task,
+`sandbox_test_profile="real_stepwise_multi_file_task_merge_candidate"` records a
+fixed `sandbox.test` command:
+`python -m pytest tests/unit/test_codex_merge_candidate.py -q`.
 
 ## Review Gate
 
@@ -132,6 +148,9 @@ merge, auto-merge, auto-push, missing human approval, or any state other than
   session when manually enabled.
 - Real Codex multi-file execution uses the local user's Codex CLI session when
   manually enabled and must remain limited to a pending MergeCandidate summary.
+- Real Codex stepwise multi-file execution also uses the local user's Codex CLI
+  session when manually enabled. It reduces one logical multi-file task into
+  multiple single-file steps, but still relies on the local Codex CLI runtime.
 - A previous real Codex multi-file validation changed the main worktree outside
   the task worktree. That result is not accepted; the main-worktree fingerprint
   guard is a fail-closed control and must be revalidated before any merge stage.
