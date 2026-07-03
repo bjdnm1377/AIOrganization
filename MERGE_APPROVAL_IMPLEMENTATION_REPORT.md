@@ -1,6 +1,6 @@
 # Merge Approval Implementation Report
 
-Status: WAITING FOR USER APPROVAL
+Status: VERIFIED COMPLETE FOR HUMAN-APPROVED CONTROLLED MERGE FOUNDATION
 
 ## 1. Stage Goal
 
@@ -11,8 +11,9 @@ events, API behavior, and CI.
 
 ## 2. Current Status
 
-Implementation and local validation are complete in this report revision. CI
-run id and independent reviewer evidence will be updated after verification.
+Implementation, local validation, CI, and independent reviewer verification are
+complete for the human-approved controlled merge foundation. The verified
+implementation commit is `77cc50fd7e02d5be38623a423fc62f58c3a5186d`.
 
 ## 3. Why The Goal Changed
 
@@ -53,8 +54,9 @@ writes audit events. Illegal transitions return conflict errors.
 `MergeService` requires an approved candidate, a clean target repository,
 `HEAD == base_commit`, safe changed files, a readable logical patch artifact,
 no secret-like patch content, no local absolute paths, no high-risk file
-changes, and passing tests in a temporary integration clone. It records blocked
-or merged results and audit events.
+changes, patch headers covered by reviewed `changed_files`, and passing tests
+in a temporary integration clone. It records blocked or merged results and
+audit events.
 
 ## 8. Real Codex Called
 
@@ -91,7 +93,9 @@ files and patch headers. Patch headers must also be covered by candidate
 
 Patch content is blocked when it contains secret-like patterns or local
 absolute paths. API responses expose logical artifact URIs and bounded
-summaries, not raw patches.
+summaries, not raw patches. Candidate logical URI fields reject local paths and
+secret-like values at creation time, and API response mapping defensively
+redacts Windows, known POSIX, and generic POSIX absolute paths.
 
 ## 15. Base Commit Check
 
@@ -102,7 +106,9 @@ does not match the candidate base commit.
 
 Tests run in a temporary integration clone after patch apply. The default API
 container has no production repository configured, so API merge attempts
-without configuration return conflict.
+without configuration return conflict. Patch-apply timeouts become
+`PATCH_APPLY_TIMEOUT`; test command timeouts become `MERGE_TESTS_TIMEOUT`; both
+paths block the candidate and write controlled result/audit records.
 
 ## 17. API Endpoints
 
@@ -129,8 +135,8 @@ Implemented event types include `merge_candidate.waiting_approval`,
 - `.\.venv\Scripts\python.exe -m ruff check .`: exit `0`.
 - `.\.venv\Scripts\python.exe -m mypy src tests`: exit `0`.
 - `.\.venv\Scripts\python.exe -m pytest tests\unit\test_merge_approval_service.py tests\unit\test_merge_service.py tests\e2e\test_merge_candidates_api.py -q`:
-  `14 passed, 1 warning`.
-- `.\.venv\Scripts\python.exe -m pytest -q`: `141 passed, 2 skipped, 1 warning`.
+  `18 passed, 1 warning`.
+- `.\.venv\Scripts\python.exe -m pytest -q`: `145 passed, 2 skipped, 1 warning`.
 - `.\scripts\supply_chain_checks.ps1 -Python .\.venv\Scripts\python.exe`:
   exit `0`; `pip-audit` reported no known vulnerabilities;
   `detect-secrets` reported `0` findings; license report and CycloneDX SBOM
@@ -139,19 +145,29 @@ Implemented event types include `merge_candidate.waiting_approval`,
 
 ## 21. CI Run ID
 
-Pending.
+`28663683133`
 
 ## 22. CI Run URL
 
-Pending.
+`https://github.com/bjdnm1377/AIOrganization/actions/runs/28663683133`
 
 ## 23. CI Commit Hash
 
-Pending.
+`77cc50fd7e02d5be38623a423fc62f58c3a5186d`
 
 ## 24. Reviewer Findings
 
-Pending independent reviewer.
+Independent reviewer `Hume` performed read-only review after CI.
+
+- First review on `c1e907318943abc49259ec2dc2367fd8d1f9e343`: no high
+  severity findings; three medium findings were reported for `.env*` coverage,
+  timeout-to-BLOCKED handling, and logical URI/API path sanitization.
+- Follow-up commit `32b06ecab0783c9cd04b90c333a27e5c5f2b769c` fixed `.env*`,
+  timeout handling, and normal logical URI validation.
+- Final commit `77cc50fd7e02d5be38623a423fc62f58c3a5186d` fixed the remaining
+  generic POSIX absolute-path API redaction gap.
+- Final reviewer verdict: no high findings, no medium findings. CI keeps real
+  Codex disabled; no auto-push, deploy, or unapproved merge path was found.
 
 ## 25. Known Risks
 
@@ -177,16 +193,16 @@ environment evaluation while keeping merge approval gates intact.
 
 ## 29. Current Commit Hash
 
-`67aeac4893f29113100ccceb2e2576cf31ef754c` before this implementation commit.
+`77cc50fd7e02d5be38623a423fc62f58c3a5186d` at verified implementation commit.
 
 ## 30. Origin Master Commit Hash
 
-`67aeac4893f29113100ccceb2e2576cf31ef754c` before this implementation commit.
+`77cc50fd7e02d5be38623a423fc62f58c3a5186d` at verified implementation commit.
 
 ## 31. Git Status
 
-Dirty before implementation commit; expected changed files are the merge
-approval implementation, tests, CI workflow, documentation, and this report.
+`git status --short` was empty after commit
+`77cc50fd7e02d5be38623a423fc62f58c3a5186d` and CI run `28663683133`.
 
 ## 32. User Acceptance Options
 
