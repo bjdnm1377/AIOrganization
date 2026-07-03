@@ -22,6 +22,14 @@ any file changes were observed.
 
 The project must not enter the human-approved merge implementation stage.
 
+Follow-on CLI diagnostics have now reduced the problem below the multi-file
+orchestration layer. Version and doctor checks completed, read-only stdin and
+argument exec prompts completed near their timeout bounds with transport-stall
+signals, and the minimal workspace-write single-file create diagnostic timed
+out after 180 seconds with no file-change events. The current diagnostic status
+is recorded in `CODEX_CLI_DIAGNOSTIC_REPORT.md` as
+`BLOCKED - CODEX CLI DIAGNOSTIC TIMEOUT`.
+
 ## 3. Previous Failure
 
 Earlier real single-call multi-file validation produced a task-worktree
@@ -296,22 +304,18 @@ running. Docker Desktop was then started, `docker info` confirmed Server
 
 ## 19. CI Evidence
 
-No CI run was started for this blocked stepwise validation result.
-
-- CI run id: N/A.
-- CI run URL: N/A.
-- CI commit hash: N/A.
-
-Reason: the required real local stepwise manual validation did not pass. The
-stage must remain blocked and must not proceed to push/CI/Reviewer acceptance
-as a verified result.
-
-Previous known passing CI baseline:
+The blocked stepwise implementation and report commits were pushed to preserve
+the safety gates and timeout diagnostics, but that CI result does not turn the
+real stepwise manual validation into a pass.
 
 - Workflow: `Verification`.
-- Run id: `28577960327`.
-- Commit: `c60249214f9340c5095640880cd042d5645a5f58`.
+- Run id: `28655649683`.
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28655649683`.
+- Commit: `fbba2bfceee6acb21483ecb0eff0af34b5b0cf51`.
 - Conclusion: success.
+
+CI did not call real Codex. Real stepwise validation remains blocked and no
+accepted MergeCandidate exists.
 
 ## 20. Implemented Locally In This Stage
 
@@ -388,9 +392,10 @@ Default tests now cover:
 
 - Real stepwise multi-file manual validation is not passing.
 - No accepted real stepwise MergeCandidate has been generated.
-- No CI run was started for the blocked result.
-- Independent Reviewer was not run because the real stepwise validation did not
-  pass.
+- Follow-on real CLI diagnostics are also blocked by a single-file create
+  timeout.
+- Independent Reviewer for the current diagnostic stage is pending until the
+  diagnostic report commit has passed CI.
 - MergeService remains intentionally unimplemented.
 
 ## 25. Next Stage Recommendation
@@ -400,9 +405,11 @@ Do not enter the human-approved merge implementation stage.
 Recommended next work is to debug or further reduce the real Codex single-file
 step execution path. Possible options:
 
-- run a one-file real Codex diagnostic task with the same step prompt shape;
 - inspect local Codex CLI/app-server transport behavior outside the workflow;
-- reduce Step 1 prompt further while preserving the same allowed-file boundary;
+- restart or repair the local Codex app-server path;
+- re-check Codex auth and consider upgrading or downgrading the CLI;
+- repeat the same diagnostic from WSL or Linux if the Windows host remains
+  unstable;
 - keep timeout finite and preserve `CODEX_STEP_TIMEOUT` diagnostics.
 
 Do not solve this by increasing permissions, running in the main worktree,
@@ -412,20 +419,18 @@ success.
 ## 26. Current Git State
 
 - Current branch: `master`.
-- Current local commit hash:
-  `af2bc44f66e226f8819c6a8e834f45fe6955f315`.
+- Current local commit hash before diagnostic report update:
+  `c9ea4becfffdb22866fc92f1abcf4933f795637a`.
 - `origin/master` commit hash:
-  `c60249214f9340c5095640880cd042d5645a5f58`.
-- `git status --short` before report update: empty.
-- `git status --short` after report update: report file modified only until the
-  final local report commit is created.
-- Local master is ahead of origin after implementation commit.
-- No push was performed after the blocked real stepwise run.
+  `fbba2bfceee6acb21483ecb0eff0af34b5b0cf51`.
+- `git status --short` before diagnostic report update: empty.
+- Local master is ahead of origin after the diagnostic scaffold commit.
+- No Codex output branch was pushed.
 
 ## 27. User Acceptance Options
 
 - 通过：进入人工审批后受控 merge 实现阶段；
-- 等待：真实 stepwise multi-file task 仍被 timeout 或隔离边界阻塞；
+- 等待：真实 stepwise 或 diagnostic Codex 执行仍被 timeout 或隔离边界阻塞；
 - 驳回：继续修复受控多文件代码任务阶段；
 - 暂停：暂不继续；
 - 调整目标：重新规划下一阶段。
