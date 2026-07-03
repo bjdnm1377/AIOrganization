@@ -1,173 +1,220 @@
 # Controlled Multi-File Codex Task And Merge Candidate Report
 
-Status: BLOCKED - CODEX CLI MULTI-FILE TASK TIMED OUT
+Status: BLOCKED - CODEX STEPWISE MULTI-FILE TASK TIMED OUT
 
 ## 1. Stage Goal
 
-Resolve the real Codex multi-file task timeout without weakening worktree
-isolation, file policy, approval policy, Docker sandbox checks, or the
-main-worktree fingerprint guard. The stage remains limited to producing a
-human-reviewable MergeCandidate artifact. It does not implement MergeService,
-merge branches, push Codex output branches, open PRs, or deploy.
+Prove that one logical multi-file Coding Task can be orchestrated as multiple
+controlled single-file Codex CLI steps. Each step must run in the task
+worktree, have one allowed file, retain forbidden-file boundaries, record
+timeout diagnostics, preserve the main-worktree fingerprint, and stop before
+any merge implementation. A passing result would generate only a pending
+MergeCandidate artifact for human review.
+
+This stage does not implement MergeService, perform merge, push a Codex output
+branch, create a PR, delete worktrees, or deploy.
 
 ## 2. Current Status
 
-Still blocked. The previous blocker was a main-worktree modification during a
-real Codex multi-file run. The current implementation guarded the main worktree
-successfully, but the real Codex CLI exec command timed out again after the
-multi-file task was reduced from three files to two files.
+The implementation for stepwise orchestration exists locally, but real manual
+validation is still blocked. The latest real run timed out during Step 1 before
+any file changes were observed.
 
 The project must not enter the human-approved merge implementation stage.
 
 ## 3. Previous Failure
 
-Earlier real multi-file validation produced a task-worktree MergeCandidate
-artifact but also modified the main worktree. That result was rejected as an
-isolation violation.
+Earlier real single-call multi-file validation produced a task-worktree
+MergeCandidate artifact but also modified the main worktree. That result was
+rejected as an isolation violation.
 
-Implemented guard:
+A later single-call multi-file revalidation kept the main-worktree fingerprint
+stable but timed out after 600 seconds with no task-worktree diff and no
+MergeCandidate artifact. That result remains blocked as
+`CODEX_CLI_TIMEOUT`.
 
-- Fingerprint covers `HEAD`, porcelain status with all untracked files, tracked
-  diff, staged diff, and untracked file content hashes.
-- If the main worktree changes during real Codex execution, the Worker result is
-  forced to `FAILED`.
-- `blocked_reason=MAIN_WORKTREE_MODIFIED`.
-- `policy_violations` includes `main_worktree:modified`.
-- Review Worker rejects.
+## 4. Current Strategy Change
 
-## 4. Current Failure
+The new strategy does not ask one Codex CLI invocation to complete multiple
+files. `CodexWorker` now supports `codex_mode="local_stepwise_multi_file_task"`
+and requires explicit opt-in:
 
-The latest revalidation failed before review:
+- `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true`
 
-- Command:
-  `$env:AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK='true'; .\.venv\Scripts\python.exe -m pytest tests\manual\test_real_codex_multi_file_task.py -q`
-- Result: `1 failed in 619.50s`.
-- Failure: `Codex CLI multi-file task execution timed out.`
-- Failure point: deterministic validation raised `ValidationFailure` for the
-  failed Codex Worker result.
-- Review Worker did not run in the manual workflow because deterministic
-  validation blocked first.
-- Unit coverage verifies Review Worker rejects timeout results with
-  `codex:timeout`.
+The logical task is split into fixed single-file steps:
 
-## 5. Timeout Root-Cause Analysis
+- Step 1: source-file implementation.
+- Step 2: unit-test implementation.
 
-- Actual Codex command:
-  `codex --sandbox workspace-write --ask-for-approval on-request exec --json --cd <worktree> --color never -`.
-- Exec timeout configuration: `600` seconds.
-- Version timeout configuration: `15` seconds.
-- Preflight timeout configuration: `30` seconds.
-- `codex --version`: completed, `codex-cli 0.142.5`.
-- `codex doctor --json`: completed, preflight passed.
-- Codex emitted JSONL but did not finish.
-- JSONL events observed: `9`.
-- Error events observed: `4`.
-- File-change events observed: `0`.
-- Last JSONL event type: `item.completed`.
-- Approval request observed: `false`.
-- Network requested: `true` for doctor and exec.
-- Privilege escalation observed: no.
-- `danger-full-access`: not used.
-- Main worktree modification: no.
-- Task worktree diff: none.
-- Docker sandbox did not run because Codex failed before sandbox validation.
-- Diff collection and artifact writing completed and did not block.
-- The evidence points to Codex CLI remote execution/transport stalling before
-  making file changes, not a Docker sandbox or diff collector hang.
-- Prompt length and task complexity were reduced, but timeout still occurred.
-- Next likely recovery is a smaller real Codex task or split real Codex
-  sub-tasks, not larger timeout or wider permissions.
+Each step uses a short prompt, task-worktree cwd/`--cd`, independent
+allowed/forbidden files, per-step main-worktree fingerprint checks,
+task-worktree dirty-file fingerprint checks, command-log sanitization, timeout
+classification, and process-tree cleanup metadata.
 
-## 6. Timeout Classification And Cleanup
+## 5. Stepwise Orchestration Design
 
-- `blocked_reason`: `CODEX_CLI_TIMEOUT`.
-- Command log `timeout_type`: `CODEX_CLI_TIMEOUT`.
-- Elapsed time: `600328 ms`.
+- Logical TaskSpec: implement MergeCandidate summary behavior and tests.
+- StepSpec count: 2.
+- Step execution: one real Codex CLI call per step.
+- Step prompt: no main repository absolute path, no token, no API key, no auth
+  path, no user directory, no GitHub credential.
+- Step failure behavior: stop later steps, mark the logical task FAILED, do not
+  generate an accepted MergeCandidate, and require Review Worker rejection.
+- Success behavior: aggregate changed files, run fixed sandbox test, write a
+  pending MergeCandidate artifact, require independent Review Worker
+  acceptance, and still do not merge or push.
+
+## 6. Step Policies
+
+Step 1 allowed file:
+
+- `src/ai_org/adapters/codex/merge_candidate.py`
+
+Step 1 extra forbidden files:
+
+- `tests/**`
+
+Step 2 allowed file:
+
+- `tests/unit/test_codex_merge_candidate.py`
+
+Step 2 extra forbidden files:
+
+- `src/**`
+
+Both steps also inherit forbidden patterns for `.git/**`, `.github/**`,
+`.env*`, dependency files, `pyproject.toml`, migrations, docs, scripts,
+`AGENTS.md`, `README.md`, `docker-compose.yml`, and credential-bearing files.
+
+## 7. Timeout Configuration
+
+- Codex version timeout: `15` seconds.
+- Codex doctor/preflight timeout: `30` seconds.
+- Step exec timeout in the latest manual run: `240` seconds.
+- Logical stepwise total timeout: `540` seconds.
+- Docker sandbox command timeout: controlled by `DockerSandboxRunner` resource
+  limits.
+- Diff collection uses the existing bounded git diff collection path.
+
+## 8. Latest Real Step Results
+
+Manual command:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK='true'
+.\.venv\Scripts\python.exe -m pytest tests\manual\test_real_codex_stepwise_multi_file_task.py -q
+```
+
+Result:
+
+- Exit code: `1`.
+- Pytest result: `1 failed in 260.02s`.
+- Failure: `ValidationFailure: Codex CLI stepwise multi-file task execution
+  timed out.`
+- Failed step: Step 1.
+- Step 2: not executed.
+- MergeCandidate artifact: not generated.
+
+Step 1 command logs:
+
+- `codex --version`: completed, exit `0`, `codex-cli 0.142.5`.
+- `codex doctor --json`: completed, exit `0`, preflight passed.
+- `codex ... exec --json --cd <worktree> ...`: timed out after `240275 ms`.
+- Timeout type: `CODEX_STEP_TIMEOUT`.
+- JSONL events: `9`.
+- JSONL error events: `4`.
+- JSONL file-change events: `0`.
+- Last JSONL event type: `item.started`.
+- Approval requested: `false`.
+- Network requested: `true`.
 - Process killed: `true`.
 - Process tree killed: `true`.
 - Cleanup error: none recorded.
-- No accepted MergeCandidate artifact was generated after timeout.
 
-## 7. Current TaskSpec Summary
+## 9. Codex CLI And Opt-In
+
+- Codex CLI version: `codex-cli 0.142.5`.
+- Stepwise opt-in: enabled only for the manual command above.
+- CI opt-in: `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=false`.
+- Default tests: do not call real Codex.
+- Real API keys: not requested and not used.
+
+## 10. TaskSpec Summary
 
 - `worker_type`: `codex`.
-- `codex_mode`: `local_multi_file_task`.
+- `codex_mode`: `local_stepwise_multi_file_task`.
 - `codex_sandbox`: `workspace-write`.
 - `codex_approval_policy`: `on-request`.
-- `sandbox_test_profile`: `real_multi_file_task_merge_candidate`.
+- `sandbox_test_profile`: `real_stepwise_multi_file_task_merge_candidate`.
 - `max_attempts`: `1`.
-- Objective: add `MERGE_CANDIDATE_MANUAL_TASK_MARKER =
-  'human-approval-only'` to the MergeCandidate module and add/update a unit test
-  for that marker.
-- Explicit exclusions: docs, config, workflows, dependencies, database, API,
-  scripts, MergeService, long commands.
+- Objective: run the controlled stepwise MergeCandidate task without
+  MergeService, merge, commit, push, docs, config, workflow, or dependency
+  changes.
 
-## 8. File Policy
+## 11. Changed Files And Diff Summary
 
-Allowed files:
+Task worktree:
 
-- `src/ai_org/adapters/codex/merge_candidate.py`
-- `tests/unit/test_codex_merge_candidate.py`
-
-Forbidden files include:
-
-- `.git/**`
-- `.github/**`
-- `.env`
-- `.env.*`
-- `requirements-lock.txt`
-- `requirements.in`
-- `pyproject.toml`
-- `alembic/**`
-- `docs/**`
-- `AGENTS.md`
-- `README.md`
-- `docker-compose.yml`
-- `scripts/**`
-
-Task metadata cannot widen the real multi-file allowed file set.
-
-## 9. Worktree Evidence
-
-- Logical worktree URI:
-  `worktree://codex/task_e404a6e99ffe422599cfadba62acd47c/attempt-1`
-- Branch:
-  `ai-org/codex/98d67aab3398/adba62acd47c-1`
-- Base commit:
-  `b32f211bbad81ca20339814a67f32de125d765ea`
+- Branch: `ai-org/codex/3a9e9f85b169/bf450343e65b-1`.
+- Base/head state: `af2bc44f66e226f8819c6a8e834f45fe6955f315`.
+- `git status --short`: empty.
 - Changed files: none.
+- Diff artifact length: `0`.
 - Diff summary: empty.
-- MergeCandidate artifact URI: none generated.
+- Secret patterns in diff: none.
 
-## 10. Main Worktree Evidence
+Because Step 1 timed out before file changes, Step 2 did not run and there is
+no merged logical changed-file set.
 
-- Branch before run: `master`.
-- HEAD before run: `b32f211bbad81ca20339814a67f32de125d765ea`.
-- `origin/master` before report update:
-  `c2056e449db9d28230ddc8100bdaf1764575f6b5`.
-- `git status --short` before run: empty.
-- Main worktree fingerprint before run:
-  `a6fcb15b1f5d16f508fc5036ac3026393b3f1f838a72cff67205178b60e58785`.
-- `git status --short` after run: empty.
-- Main worktree fingerprint after run:
-  `a6fcb15b1f5d16f508fc5036ac3026393b3f1f838a72cff67205178b60e58785`.
+## 12. Main Worktree Fingerprint Evidence
+
+Before latest real stepwise run:
+
+- Branch: `master`.
+- HEAD: `af2bc44f66e226f8819c6a8e834f45fe6955f315`.
+- `origin/master`: `c60249214f9340c5095640880cd042d5645a5f58`.
+- `git status --short`: empty.
+- Main worktree fingerprint:
+  `8bc49eb51f4af2dbab34b739e8cdea2e872210b3bf0b52359fcfc61602801fba`.
+
+After latest real stepwise run:
+
+- `git status --short`: empty.
+- Main worktree fingerprint:
+  `8bc49eb51f4af2dbab34b739e8cdea2e872210b3bf0b52359fcfc61602801fba`.
 - Fingerprint consistent: yes.
 - Main branch modified by Codex: no.
 - Automatic merge: no.
 - Automatic push: no.
 - Automatic commit of Codex output branch: no.
 
-## 11. Sandbox
+## 13. Artifacts
 
-Docker was available:
+Latest failed real run artifacts:
+
+- `artifact://codex/task_1fe326684f374ff9a323bf450343e65b/attempt-1/prompt.md`
+- `artifact://codex/task_1fe326684f374ff9a323bf450343e65b/attempt-1/step-1-prompt.md`
+- `artifact://codex/task_1fe326684f374ff9a323bf450343e65b/attempt-1/step-2-prompt.md`
+- `artifact://codex/task_1fe326684f374ff9a323bf450343e65b/attempt-1/command-log.json`
+- `artifact://codex/task_1fe326684f374ff9a323bf450343e65b/attempt-1/diff.patch`
+
+MergeCandidate artifact URI:
+
+- none generated.
+
+Prompt, command-log, and diff artifacts use logical worktree URIs or
+`<worktree>` placeholders and do not expose the main repository absolute path.
+
+## 14. Sandbox
+
+Docker was available for the manual stepwise run:
 
 - Docker Server: `29.2.1`.
 
-`DockerSandboxRunner` did not run during the latest manual test because Codex
-timed out before producing a successful result. The fixed sandbox profile
-remains in place and is covered by unit/default tests.
+`DockerSandboxRunner` did not execute the fixed pytest validation because Step 1
+timed out before a successful Codex result.
 
-Sandbox policy summary:
+Sandbox policy remains:
 
 - non-root user;
 - network disabled;
@@ -180,94 +227,143 @@ Sandbox policy summary:
   mounts;
 - bounded CPU, memory, PID, timeout, stdout, and stderr.
 
-## 12. Command Logs And Artifacts
+## 15. MergeCandidate Boundary
 
-Artifacts for the latest failed real run:
+No MergeCandidate was generated for the timed-out run.
 
-- `artifact://codex/task_e404a6e99ffe422599cfadba62acd47c/attempt-1/prompt.md`
-- `artifact://codex/task_e404a6e99ffe422599cfadba62acd47c/attempt-1/command-log.json`
-- `artifact://codex/task_e404a6e99ffe422599cfadba62acd47c/attempt-1/diff.patch`
+The implemented MergeCandidate summary path still records:
 
-Command log summary:
+- `merge_performed=False`;
+- `auto_merge=False`;
+- `auto_push=False`;
+- `human_approval_required=True`;
+- `requires_human_merge_approval=True`;
+- `approval_state="waiting_merge_approval"`;
+- logical task worktree URI;
+- branch name;
+- base commit;
+- head state.
 
-- `codex --version`: completed, exit `0`, duration `175 ms`.
-- `codex doctor --json`: completed, exit `0`, preflight passed.
-- `codex ... exec --json --cd <worktree> ...`: timeout after `600328 ms`,
-  `timeout_type=CODEX_CLI_TIMEOUT`, `jsonl_event_count=9`,
-  `jsonl_error_events=4`, `jsonl_file_change_events=0`,
-  `approval_requested=false`, `process_killed=true`,
-  `process_tree_killed=true`.
+This is artifact generation only. It is not MergeService and it does not
+perform branch operations.
 
-Prompt, command logs, and diff artifacts use logical worktree URIs or
-`<worktree>` placeholders and do not expose the main repository absolute path.
-No secret findings were detected by local `detect-secrets`.
+## 16. Review Worker Decision
 
-## 13. Review, Audit, And API
+Manual workflow Review Worker step was not reached because deterministic
+validation blocks FAILED worker results first.
 
-- Manual workflow Review Worker decision: not reached because deterministic
-  validation blocked the failed Codex result.
-- Unit coverage Review Worker decision for timeout: rejected with
-  `codex:timeout`.
-- `merge_candidate.created` audit event: not created for the timed-out manual
-  run.
-- FastAPI query verification: default e2e tests passed locally; the manual
-  real Codex test uses the application service and LangGraph workflow directly.
+Independent Review Worker was invoked against an equivalent
+`CODEX_STEP_TIMEOUT` Coding Worker result:
 
-## 14. Local Validation
+- Decision: `REJECTED`.
+- Defects: `codex:timeout`.
 
-Validation before the implementation commit:
+Unit tests also verify timeout rejection and no accepted MergeCandidate after
+step timeout.
+
+## 17. Audit Events
+
+Latest real stepwise run:
+
+- `coding_worker.completed`: worker result persisted before deterministic
+  validation failed.
+- `merge_candidate.created`: not created.
+
+The successful audit-event path remains covered by default tests with Mock/Fake
+Codex behavior only.
+
+## 18. Local Validation
+
+Before the real manual stepwise run, local validation on implementation commit
+`af2bc44f66e226f8819c6a8e834f45fe6955f315`:
 
 - `.\.venv\Scripts\python.exe -m ruff format --check .`: exit `0`.
 - `.\.venv\Scripts\python.exe -m ruff check .`: exit `0`.
 - `.\.venv\Scripts\python.exe -m mypy src tests`: exit `0`.
-- `.\.venv\Scripts\python.exe -m pytest tests\unit\test_codex_worker.py tests\unit\test_codex_merge_candidate.py -q`:
-  exit `0`, `49 passed`.
+- `.\.venv\Scripts\python.exe -m pytest tests\unit\test_codex_merge_candidate.py tests\unit\test_ci_real_codex_disabled.py tests\unit\test_codex_worker.py -q`:
+  exit `0`, `61 passed`.
 - `.\.venv\Scripts\python.exe -m pytest -q`: exit `0`,
-  `108 passed, 2 skipped, 1 warning`.
+  `119 passed, 2 skipped, 1 warning`.
+
+The first full pytest attempt failed only because Docker Desktop was not
+running. Docker Desktop was then started, `docker info` confirmed Server
+`29.2.1`, and the full pytest suite passed.
+
 - `.\scripts\supply_chain_checks.ps1 -Python .\.venv\Scripts\python.exe`:
-  exit `0`.
+  exit `0`; `pip-audit` reported no known vulnerabilities; `detect-secrets`
+  reported `0` findings; license report and CycloneDX SBOM were generated.
 - `git diff --check`: exit `0`.
 
-Supply-chain results:
+## 19. CI Evidence
 
-- `pip-audit`: no known vulnerabilities found.
-- `detect-secrets`: 0 findings.
-- License report and CycloneDX SBOM generated.
+No CI run was started for this blocked stepwise validation result.
 
-## 15. CI Evidence
+- CI run id: N/A.
+- CI run URL: N/A.
+- CI commit hash: N/A.
 
-Safety baseline commit `c2056e449db9d28230ddc8100bdaf1764575f6b5` was pushed
-before this timeout-reduction work and passed GitHub Actions:
+Reason: the required real local stepwise manual validation did not pass. The
+stage must remain blocked and must not proceed to push/CI/Reviewer acceptance
+as a verified result.
+
+Previous known passing CI baseline:
 
 - Workflow: `Verification`.
-- Run id: `28576035878`.
-- URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28576035878`.
-- Conclusion: `success`.
+- Run id: `28577960327`.
+- Commit: `c60249214f9340c5095640880cd042d5645a5f58`.
+- Conclusion: success.
 
-The current timeout-reduction/report commits are recorded in the final response
-after commit and CI completion. CI must continue to keep real Codex disabled.
+## 20. Implemented Locally In This Stage
 
-## 16. Implemented In This Stage
+- Added `local_stepwise_multi_file_task` mode.
+- Added explicit opt-in
+  `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK`.
+- Added fixed Step 1 and Step 2 prompts with no main-repo absolute paths.
+- Added per-step single-file policies.
+- Added per-step task-worktree dirty-file fingerprint comparison.
+- Added per-step main-worktree fingerprint before/after recording.
+- Added `CODEX_STEP_TIMEOUT` normalization.
+- Added failed-step metadata and timeout diagnostics.
+- Added fixed sandbox profile
+  `real_stepwise_multi_file_task_merge_candidate`.
+- Added MergeCandidate metadata for logical worktree URI, branch, base commit,
+  head state, and `requires_human_merge_approval=True`.
+- Added Review Worker rejection for `CODEX_STEP_TIMEOUT`.
+- Added CI env guard keeping the new real Codex path disabled.
+- Added unit and manual tests for the stepwise path.
+- Updated isolation, security, testing, merge-approval, threat-model, real-code,
+  worker, and roadmap documentation.
 
-- Reduced real multi-file allowed files from three files to two files.
-- Moved `docs/**` into the forbidden file set for real multi-file Codex tasks.
-- Shortened the manual real multi-file prompt.
-- Removed documentation-file assertions from the multi-file sandbox test
-  profile.
-- Added explicit `CODEX_CLI_TIMEOUT` command-log diagnostics.
-- Added elapsed-time, JSONL event, approval-observation, and process cleanup
-  metadata for timeout logs.
-- Added process-tree cleanup for subprocess timeout.
-- Added Review Worker rejection for timeout results.
-- Added tests for timeout classification, deterministic validation blocking,
-  fingerprint post-check after timeout, no accepted MergeCandidate after
-  timeout, two-file allowed scope, and process-tree cleanup.
+## 21. Test Coverage Added Or Updated
 
-## 17. Not Implemented
+Default tests now cover:
+
+- logical multi-file task split into two single-file steps;
+- independent step allowed files;
+- Step 1 cannot modify the test file;
+- Step 2 cannot modify the source file;
+- forbidden file modification fails the logical task;
+- step timeout fails the logical task;
+- timeout does not generate a MergeCandidate;
+- main-worktree fingerprint change fails the logical task;
+- prompts do not contain the main repository absolute path;
+- command logs do not expose token-like output;
+- Codex cwd/`--cd` is the task worktree;
+- process-tree cleanup metadata after timeout;
+- all steps success produces a pending MergeCandidate artifact;
+- MergeCandidate artifact does not expose local absolute paths;
+- MergeCandidate marks human merge approval required;
+- no automatic merge;
+- no automatic push;
+- CI does not call real Codex;
+- Docker sandbox, PostgreSQL checkpoint, supply-chain, secret scan, and SBOM
+  checks remain part of the verification plan.
+
+## 22. Not Implemented
 
 - No MergeService.
 - No automatic merge.
-- No automatic push of Codex output branches.
+- No automatic push.
 - No automatic commit of Codex output branches.
 - No PR creation or deploy.
 - No CI real Codex execution.
@@ -276,46 +372,60 @@ after commit and CI completion. CI must continue to keep real Codex disabled.
 - No API, database, migration, Redis, Temporal, OpenHands, Virtuoso, HFSS,
   MATLAB, or web frontend integration.
 
-## 18. Known Risks
+## 23. Known Risks
 
-- Real Codex CLI can start a thread and emit JSONL while never completing the
-  task on this host.
+- Real Codex CLI can start a thread and emit JSONL while never completing even
+  a single-file step on this host.
 - The local Codex app-server process remains a shared host runtime outside the
   repository process tree.
-- The current manual task may need to be reduced further to one real Codex
-  sub-task, or split into sequential real Codex child tasks.
+- Stepwise orchestration reduces task complexity but does not by itself fix a
+  Codex CLI transport/runtime stall.
 - Worktree cleanup remains manual.
 - Docker sandboxing remains a fixed-command foundation, not production
   arbitrary-code execution.
 
-## 19. Next Recommended Step
+## 24. Unfinished Content
 
-Do not enter merge implementation. Keep status as waiting/blocked and either:
+- Real stepwise multi-file manual validation is not passing.
+- No accepted real stepwise MergeCandidate has been generated.
+- No CI run was started for the blocked result.
+- Independent Reviewer was not run because the real stepwise validation did not
+  pass.
+- MergeService remains intentionally unimplemented.
 
-- reduce the real Codex task to one file plus a separate real test-file task; or
-- introduce an explicit two-step real Codex sub-task flow where each Codex run
-  touches one allowed file and is independently reviewed; or
-- investigate Codex CLI transport/runtime behavior outside the AI Organization
-  workflow before another full validation attempt.
+## 25. Next Stage Recommendation
 
-Do not solve this by increasing timeout indefinitely, increasing permissions,
-running in the main worktree, or relaxing file policy.
+Do not enter the human-approved merge implementation stage.
 
-## 20. Current Git State
+Recommended next work is to debug or further reduce the real Codex single-file
+step execution path. Possible options:
+
+- run a one-file real Codex diagnostic task with the same step prompt shape;
+- inspect local Codex CLI/app-server transport behavior outside the workflow;
+- reduce Step 1 prompt further while preserving the same allowed-file boundary;
+- keep timeout finite and preserve `CODEX_STEP_TIMEOUT` diagnostics.
+
+Do not solve this by increasing permissions, running in the main worktree,
+relaxing file policy, disabling fingerprint checks, or treating the timeout as
+success.
+
+## 26. Current Git State
 
 - Current branch: `master`.
-- Timeout-reduction implementation commit before report update:
-  `b32f211bbad81ca20339814a67f32de125d765ea`.
-- Final report commit: recorded in the final response.
-- `origin/master` before report update:
-  `c2056e449db9d28230ddc8100bdaf1764575f6b5`.
-- `git status --short` after report edit: report file modified only until the
-  final report commit is created.
+- Current local commit hash:
+  `af2bc44f66e226f8819c6a8e834f45fe6955f315`.
+- `origin/master` commit hash:
+  `c60249214f9340c5095640880cd042d5645a5f58`.
+- `git status --short` before report update: empty.
+- `git status --short` after report update: report file modified only until the
+  final local report commit is created.
+- Local master is ahead of origin after implementation commit.
+- No push was performed after the blocked real stepwise run.
 
-## 21. User Acceptance Options
+## 27. User Acceptance Options
 
-- 通过：进入人工审批后受控 merge 实现阶段。
-- 等待：真实 multi-file task 仍被 timeout 或隔离边界阻塞。
-- 驳回：继续修复受控多文件代码任务阶段。
-- 暂停：暂不继续。
+- 通过：进入人工审批后受控 merge 实现阶段；
+- 等待：真实 stepwise multi-file task 仍被 timeout 或隔离边界阻塞；
+- 驳回：继续修复受控多文件代码任务阶段；
+- 暂停：暂不继续；
 - 调整目标：重新规划下一阶段。
