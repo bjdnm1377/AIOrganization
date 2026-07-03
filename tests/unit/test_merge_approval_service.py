@@ -6,7 +6,7 @@ from ai_org.application.merge_approval import (
     InMemoryMergeCandidateStore,
     MergeApprovalService,
 )
-from ai_org.domain.errors import ConflictError
+from ai_org.domain.errors import ConflictError, ValidationFailure
 from ai_org.domain.merge_candidate import MergeCandidateSourceType, MergeCandidateStatus
 from ai_org.domain.models import AuditEvent
 
@@ -134,6 +134,39 @@ def test_rejected_or_blocked_real_codex_fixture_cannot_be_approved() -> None:
             blocked_real_codex.candidate_id,
             approved_by="reviewer",
             approval_reason="not allowed",
+        )
+
+
+def test_candidate_logical_fields_reject_local_paths_and_secret_markers() -> None:
+    service = _service()
+
+    with pytest.raises(ValidationFailure, match="worktree URI"):
+        service.create_candidate(
+            project_id="project-1",
+            task_id="task-1",
+            worker_run_id="run-1",
+            source_type=MergeCandidateSourceType.MANUAL_FIXTURE,
+            base_commit="abc123",
+            changed_files=["src/example.py"],
+            diff_summary="small patch",
+            patch_artifact_uri="artifact://merge-candidates/run-1.patch",
+            tests_summary="pytest passed",
+            review_decision="accepted",
+            worktree_uri="C:\\Users\\11566\\repo",
+        )
+
+    with pytest.raises(ValidationFailure, match="patch artifact"):
+        service.create_candidate(
+            project_id="project-1",
+            task_id="task-1",
+            worker_run_id="run-2",
+            source_type=MergeCandidateSourceType.MANUAL_FIXTURE,
+            base_commit="abc123",
+            changed_files=["src/example.py"],
+            diff_summary="small patch",
+            patch_artifact_uri="artifact://TOKEN",
+            tests_summary="pytest passed",
+            review_decision="accepted",
         )
 
 

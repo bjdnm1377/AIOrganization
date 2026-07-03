@@ -88,6 +88,11 @@ The implemented path:
 13. Records a merged result and audit event only after patch apply and tests
     pass in the controlled clone.
 
+Patch apply timeouts are recorded as `PATCH_APPLY_TIMEOUT`; test command
+timeouts are recorded as `MERGE_TESTS_TIMEOUT`. Both paths block the candidate
+and write controlled result/audit records instead of leaving an approved
+candidate in limbo.
+
 The success result still records `auto_push=False` and `auto_deploy=False`.
 The implementation does not create PRs, push branches, deploy, delete Codex
 worktrees, or bypass human approval.

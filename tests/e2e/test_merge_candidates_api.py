@@ -4,7 +4,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from ai_org.adapters.api.main import AppContainer, create_app
-from ai_org.domain.merge_candidate import MergeCandidateSourceType
+from ai_org.domain.merge_candidate import MergeCandidate, MergeCandidateSourceType
 
 
 def test_merge_candidate_api_lists_and_reads_without_raw_diff_or_local_paths() -> None:
@@ -72,6 +72,36 @@ def test_merge_candidate_api_rejects_waiting_candidate() -> None:
     assert response.status_code == 200
     assert response.json()["status"] == "REJECTED"
     assert client.post(f"/merge-candidates/{candidate_id}/merge", json={}).status_code == 409
+
+
+def test_merge_candidate_api_redacts_malformed_internal_candidate_fields() -> None:
+    app = create_app()
+    client = TestClient(app)
+    container = _container(app)
+    project_id, task_id = _project_and_task(client)
+    candidate = MergeCandidate(
+        candidate_id="mc-malformed",
+        project_id=project_id,
+        task_id=task_id,
+        worker_run_id="run-malformed",
+        source_type=MergeCandidateSourceType.MANUAL_FIXTURE,
+        base_commit="abc123",
+        changed_files=["C:\\Users\\11566\\repo\\.envrc"],
+        diff_summary="C:\\Users\\11566\\repo\\patch.diff",
+        patch_artifact_uri="artifact://C:\\Users\\11566\\repo\\TOKEN.patch",
+        tests_summary="TOKEN",
+        review_decision="ACCEPTED",
+        candidate_branch="TOKEN",
+        worktree_uri="C:\\Users\\11566\\repo",
+    )
+    container.merge_approval_service.store.add_candidate(candidate)
+
+    response = client.get("/merge-candidates/mc-malformed")
+
+    assert response.status_code == 200
+    body = str(response.json())
+    assert "C:\\Users" not in body
+    assert "TOKEN" not in body
 
 
 def _project_and_task(client: TestClient) -> tuple[str, str]:

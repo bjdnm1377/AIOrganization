@@ -34,8 +34,8 @@ AuditSink = Callable[[AuditEvent], None]
 HIGH_RISK_PATTERNS = (
     ".git/**",
     ".github/**",
-    ".env",
-    ".env.*",
+    ".env*",
+    "**/.env*",
     "requirements",
     "requirements*",
     "pyproject.toml",
@@ -50,8 +50,7 @@ class InMemoryPatchArtifactStore:
         self._patches: dict[str, str] = {}
 
     def add_patch(self, uri: str, patch: str) -> str:
-        if not uri.startswith("artifact://"):
-            raise ValidationFailure("Patch artifact URI must be logical")
+        _validate_logical_uri(uri, "artifact://", "patch artifact URI")
         with self._lock:
             self._patches[uri] = patch
         return uri
@@ -143,8 +142,9 @@ class MergeApprovalService:
         candidate_branch: str | None = None,
         worktree_uri: str | None = None,
     ) -> MergeCandidate:
-        if not patch_artifact_uri.startswith("artifact://"):
-            raise ValidationFailure("MergeCandidate patch artifact must use a logical URI")
+        safe_patch_uri = _validate_logical_uri(
+            patch_artifact_uri, "artifact://", "MergeCandidate patch artifact"
+        )
         candidate = MergeCandidate(
             candidate_id=f"mc_{uuid4().hex}",
             project_id=project_id,
@@ -154,11 +154,11 @@ class MergeApprovalService:
             base_commit=base_commit,
             changed_files=sorted({_normalize_relative_path(path) for path in changed_files}),
             diff_summary=_safe_summary(diff_summary),
-            patch_artifact_uri=patch_artifact_uri,
+            patch_artifact_uri=safe_patch_uri,
             tests_summary=_safe_summary(tests_summary),
             review_decision=_safe_summary(review_decision).upper(),
-            candidate_branch=candidate_branch,
-            worktree_uri=worktree_uri,
+            candidate_branch=_safe_optional_label(candidate_branch, "candidate branch"),
+            worktree_uri=_safe_optional_logical_uri(worktree_uri, "worktree://", "worktree URI"),
         )
         candidate = self.store.add_candidate(candidate)
         self._audit(
@@ -279,12 +279,16 @@ class MergeService:
         audit_sink: AuditSink | None = None,
         repo_path: Path | None = None,
         test_command: list[str] | None = None,
+        apply_timeout_seconds: float = 30.0,
+        test_timeout_seconds: float = 60.0,
     ) -> None:
         self.approval_service = approval_service
         self.patch_store = patch_store
         self._audit_sink = audit_sink or _noop_audit
         self.repo_path = repo_path
         self.test_command = test_command
+        self.apply_timeout_seconds = apply_timeout_seconds
+        self.test_timeout_seconds = test_timeout_seconds
 
     def merge_candidate(
         self,
@@ -326,24 +330,30 @@ class MergeService:
             integration = Path(temp) / "integration"
             _run_git(None, ["clone", "--no-hardlinks", str(target_repo), str(integration)])
             _run_git(integration, ["checkout", candidate.base_commit])
-            apply_result = subprocess.run(
-                ["git", "apply", "--whitespace=nowarn", "-"],
-                cwd=str(integration),
-                input=patch,
-                text=True,
-                capture_output=True,
-                timeout=30,
-            )
+            try:
+                apply_result = subprocess.run(
+                    ["git", "apply", "--whitespace=nowarn", "-"],
+                    cwd=str(integration),
+                    input=patch,
+                    text=True,
+                    capture_output=True,
+                    timeout=self.apply_timeout_seconds,
+                )
+            except subprocess.TimeoutExpired:
+                return self._block(candidate, "PATCH_APPLY_TIMEOUT", tests_passed=False)
             if apply_result.returncode != 0:
                 return self._block(candidate, "PATCH_APPLY_FAILED", tests_passed=False)
-            test_result = subprocess.run(
-                tests,
-                cwd=str(integration),
-                check=False,
-                text=True,
-                capture_output=True,
-                timeout=60,
-            )
+            try:
+                test_result = subprocess.run(
+                    tests,
+                    cwd=str(integration),
+                    check=False,
+                    text=True,
+                    capture_output=True,
+                    timeout=self.test_timeout_seconds,
+                )
+            except subprocess.TimeoutExpired:
+                return self._block(candidate, "MERGE_TESTS_TIMEOUT", tests_passed=False)
             if test_result.returncode != 0:
                 return self._block(candidate, "MERGE_TESTS_FAILED", tests_passed=False)
             result = MergeResult(
@@ -413,6 +423,38 @@ def _safe_summary(value: str) -> str:
     return " ".join(str(redact(value)).split())
 
 
+def _validate_logical_uri(value: str, scheme: str, field_name: str) -> str:
+    clean = _safe_summary(value)
+    if not clean.startswith(scheme):
+        raise ValidationFailure(f"{field_name} must use a logical URI")
+    if _contains_secret_or_local_path(clean):
+        raise ValidationFailure(f"{field_name} must not contain secrets or local paths")
+    return clean
+
+
+def _safe_optional_logical_uri(value: str | None, scheme: str, field_name: str) -> str | None:
+    if value is None:
+        return None
+    return _validate_logical_uri(value, scheme, field_name)
+
+
+def _safe_optional_label(value: str | None, field_name: str) -> str | None:
+    if value is None:
+        return None
+    clean = _safe_summary(value)
+    if not clean or _contains_secret_or_local_path(clean):
+        raise ValidationFailure(f"{field_name} must not contain secrets or local paths")
+    return clean
+
+
+def _contains_secret_or_local_path(value: str) -> bool:
+    if sensitive_pattern_count(value):
+        return True
+    if WINDOWS_ABSOLUTE_PATH_RE.search(value):
+        return True
+    return bool(POSIX_ABSOLUTE_PATH_RE.search(value) or _GENERIC_POSIX_ABSOLUTE_RE.search(value))
+
+
 def _has_forbidden_file(paths: list[str]) -> bool:
     for path in paths:
         normalized = path.replace("\\", "/").strip()
@@ -425,10 +467,8 @@ def _has_forbidden_file(paths: list[str]) -> bool:
 def _patch_block_reason(patch: str) -> str:
     if sensitive_pattern_count(patch):
         return "PATCH_SECRET_BLOCKED"
-    if WINDOWS_ABSOLUTE_PATH_RE.search(patch):
-        return "PATCH_LOCAL_PATH_BLOCKED"
     cleaned = "\n".join(line for line in patch.splitlines() if "/dev/null" not in line)
-    if POSIX_ABSOLUTE_PATH_RE.search(cleaned) or _GENERIC_POSIX_ABSOLUTE_RE.search(cleaned):
+    if _contains_secret_or_local_path(cleaned):
         return "PATCH_LOCAL_PATH_BLOCKED"
     return ""
 

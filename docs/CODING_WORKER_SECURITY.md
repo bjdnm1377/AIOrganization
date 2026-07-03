@@ -174,6 +174,10 @@ Successful controlled merge results write audit events and keep
 `auto_push=False` and `auto_deploy=False`. The service does not push, deploy,
 open PRs, or execute real Codex.
 
+Patch artifact URI, candidate branch, and worktree URI fields are validated to
+avoid local absolute paths and secret-like values before storage. API mappers
+also apply defensive redaction for MergeCandidate response text.
+
 ## Remaining Risks
 
 - Real Codex smoke execution uses the local user's existing Codex CLI session

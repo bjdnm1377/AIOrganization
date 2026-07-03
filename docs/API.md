@@ -48,6 +48,10 @@ require an explicit `APPROVED` or `REJECTED` decision. The merge endpoint does
 not push or deploy; it can proceed only for an approved candidate and otherwise
 returns `409`.
 
+Candidate creation validates logical patch/worktree URI fields, and response
+mappers defensively redact local paths or secret-like strings if malformed
+internal data is ever present.
+
 ## Errors
 
 - Missing resources return `404`.

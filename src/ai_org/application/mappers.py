@@ -11,6 +11,12 @@ from ai_org.protocols.schemas import (
     TaskResponse,
     WorkerRunResponse,
 )
+from ai_org.security import (
+    POSIX_ABSOLUTE_PATH_RE,
+    WINDOWS_ABSOLUTE_PATH_RE,
+    redact,
+    sensitive_pattern_count,
+)
 
 
 def project_to_response(project: Project) -> ProjectResponse:
@@ -85,22 +91,22 @@ def merge_candidate_to_response(candidate: MergeCandidate) -> MergeCandidateResp
         task_id=candidate.task_id,
         worker_run_id=candidate.worker_run_id,
         source_type=candidate.source_type,
-        base_commit=candidate.base_commit,
-        candidate_branch=candidate.candidate_branch,
-        worktree_uri=candidate.worktree_uri,
-        changed_files=candidate.changed_files,
-        diff_summary=candidate.diff_summary,
-        patch_artifact_uri=candidate.patch_artifact_uri,
-        tests_summary=candidate.tests_summary,
-        review_decision=candidate.review_decision,
+        base_commit=_api_safe_text(candidate.base_commit),
+        candidate_branch=_api_safe_optional_text(candidate.candidate_branch),
+        worktree_uri=_api_safe_optional_text(candidate.worktree_uri),
+        changed_files=_api_safe_list(candidate.changed_files),
+        diff_summary=_api_safe_text(candidate.diff_summary),
+        patch_artifact_uri=_api_safe_text(candidate.patch_artifact_uri),
+        tests_summary=_api_safe_text(candidate.tests_summary),
+        review_decision=_api_safe_text(candidate.review_decision),
         requires_human_merge_approval=candidate.requires_human_merge_approval,
         auto_merge=candidate.auto_merge,
         auto_push=candidate.auto_push,
         status=candidate.status,
         created_at=candidate.created_at,
         approved_at=candidate.approved_at,
-        approved_by=candidate.approved_by,
-        approval_reason=candidate.approval_reason,
+        approved_by=_api_safe_optional_text(candidate.approved_by),
+        approval_reason=_api_safe_optional_text(candidate.approval_reason),
     )
 
 
@@ -129,3 +135,20 @@ def audit_event_to_response(event: AuditEvent) -> AuditEventResponse:
         payload=event.payload,
         created_at=event.created_at,
     )
+
+
+def _api_safe_optional_text(value: str | None) -> str | None:
+    return None if value is None else _api_safe_text(value)
+
+
+def _api_safe_list(values: list[str]) -> list[str]:
+    return [_api_safe_text(value) for value in values]
+
+
+def _api_safe_text(value: str) -> str:
+    text = " ".join(str(redact(value)).split())
+    if sensitive_pattern_count(text):
+        return "[REDACTED]"
+    if WINDOWS_ABSOLUTE_PATH_RE.search(text) or POSIX_ABSOLUTE_PATH_RE.search(text):
+        return "<path>"
+    return text

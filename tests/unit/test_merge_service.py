@@ -102,6 +102,22 @@ def test_forbidden_candidate_file_blocks_merge(tmp_path: Path) -> None:
     assert result.summary == "FORBIDDEN_FILE_BLOCKED"
 
 
+def test_env_like_candidate_file_blocks_merge(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    context = _context(repo, _successful_test_command("merged"))
+    candidate = _approved_candidate(
+        context,
+        repo,
+        [".envrc"],
+        _new_file_patch(repo, ".envrc", "VALUE=merged\n"),
+    )
+
+    result = context.merge_service.merge_candidate(candidate.candidate_id)
+
+    assert result.status == MergeResultStatus.BLOCKED
+    assert result.summary == "FORBIDDEN_FILE_BLOCKED"
+
+
 def test_patch_with_secret_or_absolute_path_blocks_merge(tmp_path: Path) -> None:
     repo = _git_repo(tmp_path / "repo")
     context = _context(repo, _successful_test_command("merged"))
@@ -182,6 +198,25 @@ def test_test_failure_blocks_merge(tmp_path: Path) -> None:
     )
 
 
+def test_test_timeout_blocks_merge_and_updates_candidate(tmp_path: Path) -> None:
+    repo = _git_repo(tmp_path / "repo")
+    context = _context(
+        repo,
+        [sys.executable, "-c", "import time; time.sleep(2)"],
+        test_timeout_seconds=0.1,
+    )
+    patch = _patch_for_readme(repo, "initial\nmerged\n")
+    candidate = _approved_candidate(context, repo, ["README.md"], patch)
+
+    result = context.merge_service.merge_candidate(candidate.candidate_id)
+
+    assert result.status == MergeResultStatus.BLOCKED
+    assert result.summary == "MERGE_TESTS_TIMEOUT"
+    assert context.approval_service.get_candidate(candidate.candidate_id).status == (
+        MergeCandidateStatus.BLOCKED
+    )
+
+
 class _Context:
     def __init__(
         self,
@@ -222,6 +257,7 @@ def _context(
     repo: Path,
     test_command: list[str],
     events: list[AuditEvent] | None = None,
+    test_timeout_seconds: float = 60.0,
 ) -> _Context:
     if events is None:
         events = []
@@ -234,6 +270,7 @@ def _context(
         events.append,
         repo_path=repo,
         test_command=test_command,
+        test_timeout_seconds=test_timeout_seconds,
     )
     return _Context(approval_service, patch_store, merge_service)
 
