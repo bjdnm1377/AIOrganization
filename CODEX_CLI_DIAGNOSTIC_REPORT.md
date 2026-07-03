@@ -170,6 +170,9 @@ Independent reviewer `Ptolemy` completed a read-only review after CI.
   seconds with no file-change events.
 - This points to a CLI/app-server/transport/runtime issue rather than a
   multi-file prompt complexity issue.
+- After user acceptance selection `Adjust goal`, the project moved to the
+  human-approved controlled merge foundation without calling real Codex CLI.
+  This diagnostic remains blocked and must not be reported as passing.
 
 ## Recommendations
 

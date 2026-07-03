@@ -24,6 +24,10 @@ are allowed to create checkpoint tables.
 | `GET` | `/projects/{project_id}/approvals` | List project approvals |
 | `POST` | `/approvals/{approval_id}/decision` | Record approval and resume workflow |
 | `GET` | `/projects/{project_id}/audit-events` | List audit events |
+| `GET` | `/merge-candidates/{candidate_id}` | Fetch a bounded MergeCandidate summary |
+| `GET` | `/projects/{project_id}/merge-candidates` | List MergeCandidates for a project |
+| `POST` | `/merge-candidates/{candidate_id}/approval` | Approve or reject a waiting MergeCandidate |
+| `POST` | `/merge-candidates/{candidate_id}/merge` | Enter the controlled merge/apply path for an approved candidate |
 
 Artifact endpoints return `Artifact` metadata from structured `AgentResult`
 output. They do not inline full diff, prompt, command-log content, database
@@ -35,6 +39,14 @@ artifact metadata through `GET /worker-runs/{run_id}/artifacts` and as a
 `GET /projects/{project_id}/audit-events`; neither endpoint performs a merge.
 `worktree://codex/{task_id}/attempt-1`; artifact URIs use
 `artifact://codex/...`.
+
+MergeCandidate endpoints expose candidate identifiers, source type, base
+commit, repository-relative changed files, bounded summaries, status, approval
+metadata, and logical artifact/worktree URIs. They do not expose raw patches,
+large diffs, local absolute paths, secrets, or tracebacks. Approval endpoints
+require an explicit `APPROVED` or `REJECTED` decision. The merge endpoint does
+not push or deploy; it can proceed only for an approved candidate and otherwise
+returns `409`.
 
 ## Errors
 

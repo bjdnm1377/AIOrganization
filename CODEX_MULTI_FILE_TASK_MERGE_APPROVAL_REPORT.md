@@ -30,6 +30,13 @@ out after 180 seconds with no file-change events. The current diagnostic status
 is recorded in `CODEX_CLI_DIAGNOSTIC_REPORT.md` as
 `BLOCKED - CODEX CLI DIAGNOSTIC TIMEOUT`.
 
+The user acceptance choice for the next stage was adjusted. The project no
+longer repeatedly retries real Codex multi-file or stepwise multi-file on this
+host. The current follow-on implementation stage is the human-approved
+controlled merge foundation, which uses Mock, DryRun, or manual fixture
+MergeCandidates and does not depend on real Codex CLI. This report remains
+blocked for real Codex multi-file validation.
+
 ## 3. Previous Failure
 
 Earlier real single-call multi-file validation produced a task-worktree

@@ -5,6 +5,10 @@
 Implemented as a manual, explicitly opted-in validation path. It is not part of
 default pytest or GitHub Actions.
 
+The current human-approved controlled merge foundation does not rerun this
+real Codex path and does not require Codex CLI, Codex auth, or an OpenAI API
+key. The small code task remains previously verified evidence only.
+
 ## Purpose
 
 This path verifies that a real local Codex CLI task can travel through the
@@ -115,8 +119,10 @@ code task.
   logical multi-file task into two controlled single-file Codex steps. The
   stepwise path also timed out in the first real step, so the current standalone
   `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true` path diagnoses CLI/auth/transport
-  behavior in a temporary repository before another real Coding Worker task is
-  attempted.
+  behavior in a temporary repository. That diagnostic single-file create path
+  is also currently blocked by timeout on this host. The current merge approval
+  stage uses Mock/DryRun/manual fixture MergeCandidates instead of real Codex
+  output and does not treat those timeouts as successful candidates.
 - Production arbitrary-code sandboxing.
 - User-provided shell command execution in Docker.
 - OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or Web frontend

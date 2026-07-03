@@ -2,88 +2,140 @@
 
 ## Current Status
 
-Merge approval is not an automatic merge feature. The implemented capability is
-a read-only, side-effect-free MergeCandidate summary that can be reviewed by a
-human before a later merge implementation exists.
+The repository now has a minimal human-approved controlled merge foundation.
+This stage does not depend on real Codex CLI execution. MergeCandidates can
+come from Mock/DryRun clients, manual fixture patches, or blocked-real-Codex
+fixtures used only as negative evidence.
 
-The controlled multi-file Codex validation previously failed because real Codex
-modified the main worktree while also producing a task-worktree
-MergeCandidate. That output is not accepted. Current validation requires the
-main worktree fingerprint to remain identical before and after real Codex
-execution; otherwise the result is `FAILED` with
-`MAIN_WORKTREE_MODIFIED` and no passing merge candidate is produced.
+Current real Codex status remains explicit:
 
-A later revalidation attempt kept the main worktree fingerprint identical but
-the Codex CLI exec command timed out before producing a task-worktree diff. That
-result is also not accepted. Timeout is classified as `CODEX_CLI_TIMEOUT`, does
-not create an accepted MergeCandidate, and must be resolved before any merge
-approval implementation begins.
+- Real Codex smoke: previously verified.
+- Real Codex small code task: previously verified.
+- Real Codex single-call multi-file: blocked by timeout.
+- Real Codex stepwise multi-file: blocked by timeout.
+- Real Codex single-file diagnostic create: blocked by timeout on this host.
 
-The current recovery path does not increase timeout indefinitely or widen
-permissions. Instead, `codex_mode="local_stepwise_multi_file_task"` splits one
-logical multi-file task into fixed single-file Codex steps. Each step has one
-allowed file, an independent forbidden-file policy, a main-worktree fingerprint
-before/after check, task-worktree dirty-file comparison, timeout diagnostics,
-and process cleanup evidence. A failed step prevents an accepted
-MergeCandidate. This is still merge-candidate generation only, not merge
-approval execution.
+Those blocked results are not accepted as passing MergeCandidates. The current
+merge approval foundation continues while real Codex stays disabled by default.
 
-The latest real stepwise validation also timed out during the first single-file
-step. The current work therefore moves one level lower: a standalone Codex CLI
-diagnostic path checks version, doctor, read-only exec, prompt delivery shape,
-and a minimal single-file create in a temporary repository. That diagnostic path
-does not create a MergeCandidate and cannot authorize merge implementation.
+## MergeCandidate
 
-## MergeCandidate Summary
+`MergeCandidate` is a structured domain object, not a merge result. It records:
 
-`build_merge_candidate_summary()` shapes structured data for a candidate:
+- candidate, project, task, and worker-run identifiers;
+- source type: `mock`, `dry_run`, `manual_fixture`, or
+  `real_codex_blocked_fixture`;
+- base commit and either a candidate branch or logical worktree URI;
+- repository-relative changed files;
+- bounded diff summary and tests summary;
+- logical `patch_artifact_uri`;
+- Review Worker decision;
+- `requires_human_merge_approval=True`;
+- `auto_merge=False`;
+- `auto_push=False`;
+- status: `WAITING_APPROVAL`, `APPROVED`, `REJECTED`, `MERGED`, or `BLOCKED`;
+- approval actor, reason, and timestamp fields.
 
-- changed files are sorted and local absolute paths are redacted;
-- `review_decision` records the current review state;
-- `tests_passed` records whether deterministic checks passed;
-- `merge_performed` is always `False`;
-- `auto_merge` is always `False`;
-- `auto_push` is always `False`;
-- `human_approval_required` is always `True`;
-- `requires_human_merge_approval` is always `True`;
-- `approval_state` is `waiting_merge_approval`.
+Large diffs are not stored inline in normal database fields or API responses.
+The patch is addressed by logical artifact URI, for example
+`artifact://merge-candidates/example.patch`.
 
-The function does not read files, write files, execute shell commands, call the
-network, read environment variables, merge branches, push branches, delete
-worktrees, or deploy.
+## MergeApprovalService
 
-## Workflow Boundary
+`MergeApprovalService` owns the approval state machine. It can create a
+candidate approval request, list and fetch candidates, approve a waiting
+candidate, reject a waiting candidate, block a candidate, and mark a candidate
+merged after a controlled merge result.
 
-For `codex_mode="local_multi_file_task"`, `CodexWorker` may create a
-`merge-candidate` artifact after the task worktree diff is collected. The real
-Codex task is currently limited to `src/ai_org/adapters/codex/merge_candidate.py`
-and `tests/unit/test_codex_merge_candidate.py`; documentation updates stay
-outside the real Codex task. The independent Review Worker must accept the
-Coding Worker result before the application writes a `merge_candidate.created`
-audit event.
+Approval requires all of the following:
 
-The main branch remains unchanged. The task worktree remains a manual review
-surface. Later stages may add a `MergeService`, but it must require explicit
-human approval, re-check policy, re-check tests, and refuse high-risk files
-without a separate approval path.
+- the candidate exists;
+- current status is `WAITING_APPROVAL`;
+- `review_decision` is `ACCEPTED`;
+- `requires_human_merge_approval=True`;
+- `auto_merge=False`;
+- `auto_push=False`;
+- source type is not `real_codex_blocked_fixture`.
 
-For the stepwise path, the final MergeCandidate may be created only after both
-single-file steps and the fixed sandbox test pass. It records logical worktree
-URI, branch name, base commit, head state, `requires_human_merge_approval=True`,
-`auto_merge=False`, and `auto_push=False`.
+Illegal transitions raise conflict errors. Rejected, blocked, merged, or
+already approved candidates cannot be silently approved again. Each approval,
+rejection, blocked result, and merge result writes an audit event.
 
-This document does not authorize merge implementation, automatic merge,
-automatic push, or automatic PR creation. Until a later human-approved stage,
-MergeCandidate artifacts are evidence for review only.
+## MergeService
 
-## High-Risk Files
+`MergeService` is intentionally minimal and controlled. It does not call real
+Codex, does not push, does not deploy, and does not directly mutate the current
+AIleader master worktree by default.
 
-The current multi-file task policy allows only:
+The implemented path:
 
-- `src/ai_org/adapters/codex/merge_candidate.py`
-- `tests/unit/test_codex_merge_candidate.py`
+1. Requires an `APPROVED` candidate.
+2. Requires an explicitly configured target repository and test command.
+3. Verifies the target repository is clean.
+4. Verifies `HEAD` equals the candidate `base_commit`; otherwise the candidate
+   is blocked with `BASE_CHANGED_BLOCKED`.
+5. Rejects candidate and patch paths matching high-risk files such as
+   `.git/**`, `.github/**`, `.env*`, dependency files, `pyproject.toml`,
+   `alembic/**`, and `scripts/**`.
+6. Reads the patch through `patch_artifact_uri`.
+7. Blocks patches containing secret-like values or local absolute paths.
+8. Blocks patches whose file headers are not covered by candidate
+   `changed_files`.
+9. Creates a temporary integration clone.
+10. Applies the patch in that temporary clone.
+11. Runs the configured tests in the temporary clone.
+12. Records a blocked result on patch or test failure.
+13. Records a merged result and audit event only after patch apply and tests
+    pass in the controlled clone.
 
-Documentation files, repository control files, dependency files, migrations, CI
-workflows, scripts, environment files, credentials, `AGENTS.md`, `README.md`,
-and production config are outside this task scope. If any such file changes,
-the result is rejected before merge approval can be considered.
+The success result still records `auto_push=False` and `auto_deploy=False`.
+The implementation does not create PRs, push branches, deploy, delete Codex
+worktrees, or bypass human approval.
+
+## API
+
+FastAPI exposes bounded merge-candidate endpoints:
+
+- `GET /merge-candidates/{candidate_id}`;
+- `GET /projects/{project_id}/merge-candidates`;
+- `POST /merge-candidates/{candidate_id}/approval`;
+- `POST /merge-candidates/{candidate_id}/merge`.
+
+Responses use Pydantic models and expose summaries plus logical artifact URIs.
+They do not inline raw patch content, local absolute paths, secrets, or
+tracebacks. Missing resources return `404`; illegal transitions return `409`.
+
+## Persistence
+
+This stage uses an in-memory MergeCandidate store and an in-memory patch
+artifact store attached to the application container. No database migration is
+introduced in this stage. PostgreSQL project/task/approval/audit and checkpoint
+tests remain unchanged and continue to run in CI.
+
+## Review Boundary
+
+Review remains independent from production. A candidate must not be treated as
+merged merely because it exists. Review and merge checks reject:
+
+- failed or timed-out real Codex results;
+- blocked real Codex fixtures;
+- candidates with forbidden files;
+- candidates with secret-like patch content;
+- patches with local absolute paths;
+- candidates that request auto-merge or auto-push;
+- candidates whose base commit no longer matches the target repository.
+
+## Not Implemented
+
+- Real Codex execution in this stage.
+- Automatic merge of unapproved candidates.
+- Automatic push.
+- Automatic deploy.
+- Pull request creation.
+- Persistent merge-candidate database tables.
+- Production-grade arbitrary-code execution.
+
+Real Codex can be revalidated later in WSL/Linux, a different CLI version,
+Codex App worktree, or a remote environment. Once real Codex is stable again,
+its accepted output can enter this same approval chain as a candidate, but it
+still cannot merge before human approval.

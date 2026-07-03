@@ -11,6 +11,12 @@ from ai_org.adapters.codex.clients import MockCodexClient
 from ai_org.adapters.codex.worker import CodexWorker
 from ai_org.adapters.memory.repositories import InMemoryRepository
 from ai_org.adapters.workers.mock import DefaultWorkerRegistry, MockReviewWorker
+from ai_org.application.merge_approval import (
+    InMemoryMergeCandidateStore,
+    InMemoryPatchArtifactStore,
+    MergeApprovalService,
+    MergeService,
+)
 from ai_org.application.service import ProjectApplicationService
 from ai_org.domain.enums import WorkerType
 from ai_org.orchestration.workflow import LangGraphWorkflow
@@ -121,6 +127,10 @@ def _codex_app(tmp_path: Path) -> FastAPI:
     )
     service = ProjectApplicationService(repo, registry)
     workflow = LangGraphWorkflow(service)
+    candidate_store = InMemoryMergeCandidateStore()
+    patch_store = InMemoryPatchArtifactStore()
+    merge_approval_service = MergeApprovalService(candidate_store, repo.add_audit_event)
+    merge_service = MergeService(merge_approval_service, patch_store, repo.add_audit_event)
     return create_app(
         AppContainer(
             repo=repo,
@@ -128,6 +138,9 @@ def _codex_app(tmp_path: Path) -> FastAPI:
             workflow=workflow,
             storage_backend="memory",
             close_callback=lambda: None,
+            merge_approval_service=merge_approval_service,
+            merge_service=merge_service,
+            patch_artifact_store=patch_store,
         )
     )
 

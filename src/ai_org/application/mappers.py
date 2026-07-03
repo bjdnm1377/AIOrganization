@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+from ai_org.domain.merge_candidate import MergeCandidate, MergeResult
 from ai_org.domain.models import Approval, AuditEvent, Project, Task, WorkerRun
 from ai_org.protocols.schemas import (
     ApprovalResponse,
     AuditEventResponse,
+    MergeCandidateResponse,
+    MergeResultResponse,
     ProjectResponse,
     TaskResponse,
     WorkerRunResponse,
@@ -72,6 +75,46 @@ def worker_run_to_response(run: WorkerRun) -> WorkerRunResponse:
         started_at=run.started_at,
         finished_at=run.finished_at,
         error=run.error,
+    )
+
+
+def merge_candidate_to_response(candidate: MergeCandidate) -> MergeCandidateResponse:
+    return MergeCandidateResponse(
+        candidate_id=candidate.candidate_id,
+        project_id=candidate.project_id,
+        task_id=candidate.task_id,
+        worker_run_id=candidate.worker_run_id,
+        source_type=candidate.source_type,
+        base_commit=candidate.base_commit,
+        candidate_branch=candidate.candidate_branch,
+        worktree_uri=candidate.worktree_uri,
+        changed_files=candidate.changed_files,
+        diff_summary=candidate.diff_summary,
+        patch_artifact_uri=candidate.patch_artifact_uri,
+        tests_summary=candidate.tests_summary,
+        review_decision=candidate.review_decision,
+        requires_human_merge_approval=candidate.requires_human_merge_approval,
+        auto_merge=candidate.auto_merge,
+        auto_push=candidate.auto_push,
+        status=candidate.status,
+        created_at=candidate.created_at,
+        approved_at=candidate.approved_at,
+        approved_by=candidate.approved_by,
+        approval_reason=candidate.approval_reason,
+    )
+
+
+def merge_result_to_response(result: MergeResult) -> MergeResultResponse:
+    return MergeResultResponse(
+        result_id=result.result_id,
+        candidate_id=result.candidate_id,
+        status=result.status,
+        summary=result.summary,
+        tests_passed=result.tests_passed,
+        auto_push=result.auto_push,
+        auto_deploy=result.auto_deploy,
+        integration_worktree_uri=result.integration_worktree_uri,
+        created_at=result.created_at,
     )
 
 

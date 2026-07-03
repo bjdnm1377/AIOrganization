@@ -45,6 +45,11 @@ Safety controls:
 - Docker sandbox integration mounts only the task worktree at `/workspace`; it
   does not mount the main repository, user home, SSH agent, Git credentials,
   cloud credentials, `.env` files, or the Docker socket.
+- The human-approved merge foundation applies candidate patches only in a
+  temporary integration clone or explicit fixture repository path. It checks
+  clean worktree state and `HEAD == base_commit` before apply. The default API
+  container has no production merge repository configured, so it cannot merge
+  the current AIleader master worktree by accident.
 
 ## Real Codex Smoke Scope
 
@@ -136,6 +141,19 @@ The diagnostic scenarios are deliberately minimal:
 Timeout or auth failure is a blocked diagnostic result. It is not a
 MergeCandidate failure, not a merge approval signal, and not evidence that a
 Coding Worker task succeeded.
+
+## Controlled Merge Isolation
+
+`MergeService` is separate from `CodexWorker`. It does not call Codex and does
+not use Codex output branches directly. A MergeCandidate must be explicitly
+approved first. The service reads a logical patch artifact, rejects forbidden
+files, local absolute paths, and secret-like content, clones the target repo
+into a temporary integration directory, applies the patch there, and runs the
+configured tests there.
+
+The original repository is used only for clean-state and base-commit checks in
+the default tests. A successful controlled merge result does not push, deploy,
+delete Codex worktrees, or mutate the current AIleader master worktree.
 
 ## Cleanup
 

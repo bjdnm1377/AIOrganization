@@ -15,6 +15,11 @@ from ai_org.domain.enums import (
     WorkerRunStatus,
     WorkerType,
 )
+from ai_org.domain.merge_candidate import (
+    MergeCandidateSourceType,
+    MergeCandidateStatus,
+    MergeResultStatus,
+)
 
 
 class StrictModel(BaseModel):
@@ -153,6 +158,52 @@ class WorkerRunResponse(StrictModel):
     started_at: datetime
     finished_at: datetime | None
     error: str | None
+
+
+class MergeCandidateResponse(StrictModel):
+    candidate_id: str
+    project_id: str
+    task_id: str
+    worker_run_id: str
+    source_type: MergeCandidateSourceType
+    base_commit: str
+    candidate_branch: str | None
+    worktree_uri: str | None
+    changed_files: list[str]
+    diff_summary: str
+    patch_artifact_uri: str
+    tests_summary: str
+    review_decision: str
+    requires_human_merge_approval: bool
+    auto_merge: bool
+    auto_push: bool
+    status: MergeCandidateStatus
+    created_at: datetime
+    approved_at: datetime | None
+    approved_by: str | None
+    approval_reason: str | None
+
+
+class MergeCandidateApprovalDecision(StrictModel):
+    decision: Literal["APPROVED", "REJECTED"]
+    decided_by: str
+    reason: str
+
+
+class MergeRequest(StrictModel):
+    pass
+
+
+class MergeResultResponse(StrictModel):
+    result_id: str
+    candidate_id: str
+    status: MergeResultStatus
+    summary: str
+    tests_passed: bool
+    auto_push: bool
+    auto_deploy: bool
+    integration_worktree_uri: str | None
+    created_at: datetime
 
 
 class AuditEventResponse(StrictModel):

@@ -22,11 +22,25 @@ from ai_org.adapters.workers.mock import DefaultWorkerRegistry
 from ai_org.application.mappers import (
     approval_to_response,
     audit_event_to_response,
+    merge_candidate_to_response,
+    merge_result_to_response,
     task_to_response,
     worker_run_to_response,
 )
+from ai_org.application.merge_approval import (
+    InMemoryMergeCandidateStore,
+    InMemoryPatchArtifactStore,
+    MergeApprovalService,
+    MergeService,
+)
 from ai_org.application.service import ProjectApplicationService
-from ai_org.domain.errors import ConflictError, DomainError, InvalidTransitionError, NotFoundError
+from ai_org.domain.errors import (
+    ConflictError,
+    DomainError,
+    InvalidTransitionError,
+    NotFoundError,
+    ValidationFailure,
+)
 from ai_org.orchestration.checkpoint_security import assert_checkpoint_security
 from ai_org.orchestration.postgres_checkpoint import postgres_checkpointer
 from ai_org.orchestration.workflow import LangGraphWorkflow
@@ -39,6 +53,10 @@ from ai_org.protocols.schemas import (
     AuditEventResponse,
     CreateProjectRequest,
     ErrorResponse,
+    MergeCandidateApprovalDecision,
+    MergeCandidateResponse,
+    MergeRequest,
+    MergeResultResponse,
     ProjectResponse,
     TaskResponse,
     WorkerRunResponse,
@@ -53,6 +71,9 @@ class AppContainer:
     workflow: LangGraphWorkflow
     storage_backend: str
     close_callback: Callable[[], None]
+    merge_approval_service: MergeApprovalService
+    merge_service: MergeService
+    patch_artifact_store: InMemoryPatchArtifactStore
 
     def close(self) -> None:
         self.close_callback()
@@ -66,12 +87,19 @@ def build_container(database_url: str | None = None) -> AppContainer:
     repo = InMemoryRepository()
     service = ProjectApplicationService(repo, DefaultWorkerRegistry.create())
     workflow = LangGraphWorkflow(service)
+    candidate_store = InMemoryMergeCandidateStore()
+    patch_store = InMemoryPatchArtifactStore()
+    merge_approval_service = MergeApprovalService(candidate_store, repo.add_audit_event)
+    merge_service = MergeService(merge_approval_service, patch_store, repo.add_audit_event)
     return AppContainer(
         repo=repo,
         service=service,
         workflow=workflow,
         storage_backend="memory",
         close_callback=_noop,
+        merge_approval_service=merge_approval_service,
+        merge_service=merge_service,
+        patch_artifact_store=patch_store,
     )
 
 
@@ -99,6 +127,7 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
 
     app.add_exception_handler(ConflictError, conflict_handler)
     app.add_exception_handler(InvalidTransitionError, conflict_handler)
+    app.add_exception_handler(ValidationFailure, conflict_handler)
 
     @app.exception_handler(RequestValidationError)
     async def validation_handler(request: Request, exc: RequestValidationError) -> JSONResponse:
@@ -192,6 +221,45 @@ def create_app(container: AppContainer | None = None) -> FastAPI:
             audit_event_to_response(event) for event in active.repo.list_audit_events(project_id)
         ]
 
+    @app.get(
+        "/projects/{project_id}/merge-candidates",
+        response_model=list[MergeCandidateResponse],
+    )
+    def list_merge_candidates(project_id: str) -> list[MergeCandidateResponse]:
+        active.service.get_project(project_id)
+        return [
+            merge_candidate_to_response(candidate)
+            for candidate in active.merge_approval_service.list_candidates(project_id)
+        ]
+
+    @app.get("/merge-candidates/{candidate_id}", response_model=MergeCandidateResponse)
+    def get_merge_candidate(candidate_id: str) -> MergeCandidateResponse:
+        candidate = active.merge_approval_service.get_candidate(candidate_id)
+        return merge_candidate_to_response(candidate)
+
+    @app.post("/merge-candidates/{candidate_id}/approval", response_model=MergeCandidateResponse)
+    def decide_merge_candidate(
+        candidate_id: str, decision: MergeCandidateApprovalDecision
+    ) -> MergeCandidateResponse:
+        if decision.decision == "APPROVED":
+            candidate = active.merge_approval_service.approve(
+                candidate_id,
+                approved_by=decision.decided_by,
+                approval_reason=decision.reason,
+            )
+        else:
+            candidate = active.merge_approval_service.reject(
+                candidate_id,
+                rejected_by=decision.decided_by,
+                rejection_reason=decision.reason,
+            )
+        return merge_candidate_to_response(candidate)
+
+    @app.post("/merge-candidates/{candidate_id}/merge", response_model=MergeResultResponse)
+    def merge_candidate(candidate_id: str, _request: MergeRequest) -> MergeResultResponse:
+        result = active.merge_service.merge_candidate(candidate_id)
+        return merge_result_to_response(result)
+
     return app
 
 
@@ -217,6 +285,10 @@ def _build_postgres_container(database_url: str) -> AppContainer:
     checkpoint_context = postgres_checkpointer(checkpoint_url, setup=setup_checkpoint)
     checkpointer = checkpoint_context.__enter__()
     workflow = LangGraphWorkflow(service, checkpointer=checkpointer)
+    candidate_store = InMemoryMergeCandidateStore()
+    patch_store = InMemoryPatchArtifactStore()
+    merge_approval_service = MergeApprovalService(candidate_store, repo.add_audit_event)
+    merge_service = MergeService(merge_approval_service, patch_store, repo.add_audit_event)
 
     def close() -> None:
         checkpoint_context.__exit__(None, None, None)
@@ -229,6 +301,9 @@ def _build_postgres_container(database_url: str) -> AppContainer:
         workflow=workflow,
         storage_backend="postgres",
         close_callback=close,
+        merge_approval_service=merge_approval_service,
+        merge_service=merge_service,
+        patch_artifact_store=patch_store,
     )
 
 

@@ -8,6 +8,7 @@
 - Codex task worktrees, diff artifacts, prompt artifacts, and command-log
   artifacts.
 - MergeCandidate artifacts and audit events awaiting human approval.
+- Merge approval decisions and controlled merge result records.
 - Docker sandbox command logs and task worktree mounts.
 - Dependency lock file and migration files.
 
@@ -18,6 +19,8 @@
 - WorkerRegistry and Worker adapter boundary.
 - CodexClient and worktree boundary.
 - SandboxRunner and container boundary.
+- MergeApprovalService state transition boundary.
+- MergeService temporary integration clone boundary.
 - PostgreSQL business schema boundary.
 - LangGraph checkpoint schema boundary.
 
@@ -65,6 +68,14 @@
   step is checked independently before the next step can run.
 - MergeCandidate summaries explicitly record no merge, no auto-merge, no
   auto-push, required human approval, and `waiting_merge_approval` state.
+- MergeApprovalService requires accepted review, human approval, no auto-merge,
+  no auto-push, and a waiting candidate status before approval can succeed.
+  Blocked real Codex fixtures cannot be approved.
+- MergeService requires an approved candidate, clean target repository,
+  matching base commit, repository-relative changed files, a logical patch
+  artifact, no forbidden files, no secret-like patch content, no local absolute
+  patch paths, and passing tests in a temporary integration clone. It does not
+  push or deploy.
 - Local real Codex execution is rejected if the main worktree changes during
   the task, even when the isolated task worktree diff is otherwise valid.
 - Stepwise local real Codex execution records and compares the main-worktree
@@ -114,6 +125,11 @@
 - MergeCandidate output can be misleading if reviewed out of context; later
   MergeService work must re-check policy, tests, and human approval before any
   branch operation.
+- The current MergeService foundation marks a controlled integration-clone
+  apply/test success as `MERGED` in the candidate lifecycle, but it does not
+  push or deploy and does not mutate the AIleader master worktree by default.
+  A future production branch-merge path will need a separate explicit approval
+  and persistence design.
 - Docker sandboxing is implemented only as a foundation with fixed safe command
   tests; production arbitrary-code execution is not implemented.
 - Worktree cleanup is manual in this stage.
@@ -128,4 +144,7 @@
 - Stronger permission and budget domain model.
 - Separate database roles for application, checkpoint, and migration.
 - Artifact retention and cleanup policy.
-- Human-approved MergeService with re-validation before merge.
+- Persistent MergeCandidate and MergeResult storage if production merge
+  approval needs to survive process restarts.
+- Production branch-merge implementation only after separate approval,
+  re-validation, and rollback design.

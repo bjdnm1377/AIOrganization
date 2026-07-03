@@ -38,31 +38,47 @@
   dirty-file checks, fixed sandbox validation, independent review, and pending
   MergeCandidate artifact generation only. Real manual validation still timed
   out in the first step, so it is not accepted as a passing real Codex result.
+- Real Codex CLI diagnostics with bounded version, doctor, read-only exec, and
+  single-file create scenarios in an independent temporary repository. The
+  latest single-file create diagnostic timed out on this host and remains
+  blocked; it is not a passing real Codex result.
+- Human-approved controlled merge foundation that uses Mock, DryRun, or manual
+  fixture MergeCandidates, requires explicit approval, checks base commit and
+  forbidden files, blocks secret/path-bearing patches, applies patches only in
+  a temporary integration clone, runs configured tests, writes audit events,
+  and does not push or deploy.
 
 ## Current Stage
 
-- Real Codex CLI single-file diagnostics. The system now diagnoses whether the
-  local Codex CLI can complete version, doctor, read-only exec, stdin versus
-  argument prompt shape, and one minimal single-file create scenario in an
-  independent temporary Git repository. The diagnostics preserve finite
-  timeouts, JSONL/process-cleanup evidence, main-worktree fingerprint
-  post-checks, no MergeCandidate, no merge, and no push. This stage must pass
-  locally and CI must keep real Codex disabled before any further real Coding
-  Worker task is attempted.
+- Human-approved controlled merge workflow validation without real Codex CLI.
+  The current stage verifies MergeCandidate structure, MergeApprovalService,
+  controlled MergeService, API endpoints, audit events, security gates, local
+  tests, supply-chain checks, and CI while all real Codex opt-ins remain
+  disabled by default.
 
 ## Next Stage
 
-Only after the CLI diagnostics and a later controlled real Coding Worker task
-pass without timeout or isolation violations, the next stage may be
-human-approved merge implementation:
+After this foundation is accepted, the next stage should return to real Codex
+runtime repair or alternate execution-environment evaluation:
+
+- Re-run diagnostics from WSL/Linux, a different Codex CLI version, Codex App
+  worktree, or remote host.
+- Keep finite timeouts and fingerprint gates.
+- Do not use `danger-full-access`.
+- Do not treat Codex timeouts as passing MergeCandidates.
+
+Only after real Codex diagnostics and a later controlled real Coding Worker task
+pass without timeout or isolation violations should a production branch-merge
+implementation be expanded beyond the current fixture/integration-clone
+foundation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.
 - Route formatter/test/build commands through the sandbox runner by default.
 - Keep approval gates for shell, network, and file-system permission increases.
 - Continue to avoid untrusted user code and automatic merge until a later stage.
-- Implement a MergeService that re-checks the MergeCandidate, branch, tests,
-  policy, and explicit human approval before any branch merge.
+- Extend MergeService persistence and branch operation design with fresh
+  re-checks of candidate, branch, tests, policy, and explicit human approval.
 - Keep automatic push and deploy out of scope unless separately approved.
 
 ## Later Stages

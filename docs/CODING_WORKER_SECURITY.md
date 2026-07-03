@@ -150,6 +150,30 @@ For MergeCandidate output, the Review Worker rejects summaries that indicate a
 merge, auto-merge, auto-push, missing human approval, or any state other than
 `waiting_merge_approval`.
 
+## Human-Approved Merge Controls
+
+The merge approval foundation is independent from real Codex execution. It can
+be exercised with Mock, DryRun, or manual fixture candidates while real Codex
+multi-file and diagnostic write paths remain blocked by timeout.
+
+`MergeApprovalService` accepts only reviewed candidates that are still
+`WAITING_APPROVAL`, require human approval, and do not request auto-merge or
+auto-push. Rejected, blocked, merged, duplicate, or blocked-real-Codex fixture
+candidates return conflict errors instead of silently transitioning.
+
+`MergeService` requires an approved candidate, a clean target repository, and
+`HEAD == base_commit`. It blocks high-risk files such as `.git/**`,
+`.github/**`, `.env*`, dependency files, `pyproject.toml`, `alembic/**`, and
+`scripts/**`. It also blocks patches containing local absolute paths or
+secret-like values, and blocks patch files that are not listed in the
+candidate's reviewed `changed_files`. Patch application and tests happen in a
+temporary integration clone, not in the current AIleader master worktree by
+default.
+
+Successful controlled merge results write audit events and keep
+`auto_push=False` and `auto_deploy=False`. The service does not push, deploy,
+open PRs, or execute real Codex.
+
 ## Remaining Risks
 
 - Real Codex smoke execution uses the local user's existing Codex CLI session

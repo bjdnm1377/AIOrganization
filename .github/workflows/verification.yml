@@ -153,6 +153,15 @@ jobs:
             tests/e2e/test_api.py \
             -q
 
+      - name: Merge approval foundation tests
+        run: |
+          source .venv/bin/activate
+          python -m pytest \
+            tests/unit/test_merge_approval_service.py \
+            tests/unit/test_merge_service.py \
+            tests/e2e/test_merge_candidates_api.py \
+            -q
+
       - name: Docker sandbox integration tests
         run: |
           source .venv/bin/activate
@@ -193,6 +202,7 @@ jobs:
             CODEX_REAL_CODE_TASK_REPORT.md \
             CODEX_MULTI_FILE_TASK_MERGE_APPROVAL_REPORT.md \
             CODEX_CLI_DIAGNOSTIC_REPORT.md \
+            MERGE_APPROVAL_IMPLEMENTATION_REPORT.md \
             CI_FAILED_REPORT.md \
             pyproject.toml requirements.in requirements-lock.txt docker-compose.yml \
             alembic.ini .editorconfig .gitignore \

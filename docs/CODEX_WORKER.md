@@ -184,6 +184,23 @@ before and after the diagnostics, and timeout results record JSONL event counts,
 last event types, timeout classification, and process-tree cleanup metadata.
 Default pytest and CI keep this path disabled.
 
+## Human-Approved Merge Foundation
+
+The current merge approval foundation does not call real Codex. It can consume
+Mock, DryRun, or manual fixture MergeCandidates and requires explicit human
+approval before the controlled `MergeService` path can run.
+
+Real Codex facts remain unchanged: smoke and the small code task were
+previously verified, while single-call multi-file, stepwise multi-file, and the
+single-file create diagnostic are currently blocked by timeout on this host.
+Those timeouts are not accepted MergeCandidates.
+
+The controlled merge path operates on a configured repository or fixture,
+checks clean worktree state, checks `HEAD == base_commit`, blocks forbidden
+files and secret/path-bearing patches, applies the patch only in a temporary
+integration clone, runs configured tests there, writes audit events, and never
+pushes or deploys.
+
 ## AgentResult Metadata
 
 Codex Worker metadata includes:

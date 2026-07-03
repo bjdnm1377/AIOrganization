@@ -45,6 +45,16 @@
   disabled in GitHub Actions.
 - MergeCandidate pure data shaping, local absolute path redaction, no merge,
   no auto-push, and application audit-event creation after accepted review.
+- MergeApprovalService candidate creation, default `WAITING_APPROVAL`,
+  human-approval requirement, accepted-review requirement, rejection, duplicate
+  transition conflicts, blocked-real-Codex fixture rejection, and audit events.
+- MergeService approval gate, rejected-candidate blocking, base commit mismatch
+  blocking, forbidden-file blocking, secret/path patch blocking, test-failure
+  blocking, temporary integration clone apply path, merged status update, audit
+  event creation, no automatic push, and no automatic deploy.
+- MergeCandidate API listing/detail, approval/rejection endpoint behavior,
+  merge endpoint conflict behavior, `404` missing resources, `409` illegal
+  transitions, and no raw diff or local absolute path exposure.
 - Worktree creation, path traversal defense, and symlink-boundary defense.
 - Coding Worker diff, artifact, command-log, review, rework, and idempotency.
 - Sandbox policy, MockSandboxRunner, DockerSandboxRunner, and optional
@@ -220,6 +230,11 @@ python -m pytest \
   tests/unit/test_merge_candidate_audit.py \
   tests/integration/test_codex_worker_workflow.py \
   tests/e2e/test_api.py \
+  -q
+python -m pytest \
+  tests/unit/test_merge_approval_service.py \
+  tests/unit/test_merge_service.py \
+  tests/e2e/test_merge_candidates_api.py \
   -q
 python -m pytest tests/integration/test_docker_sandbox.py -q
 python -m pytest -q

@@ -75,6 +75,11 @@ MergeCandidate module and its unit test. Documentation files are outside the
 real Codex multi-file allowed scope and are not required by this fixed sandbox
 command.
 
+The human-approved merge foundation does not call real Codex and does not
+execute arbitrary user-provided sandbox commands. Its unit tests use temporary
+Git repositories and explicit test commands. Docker sandbox policy tests remain
+separate and must continue to pass before the merge foundation is accepted.
+
 ## Test Coverage
 
 Unit tests cover policy defaults, privileged rejection, network rejection, host
@@ -98,3 +103,4 @@ integration step.
 - Worktree cleanup automation.
 - Automatic merge of sandbox results.
 - Automatic merge approval or branch merge.
+- Automatic push or deploy from merge approval results.
