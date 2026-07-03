@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import re
+
 from ai_org.domain.merge_candidate import MergeCandidate, MergeResult
 from ai_org.domain.models import Approval, AuditEvent, Project, Task, WorkerRun
 from ai_org.protocols.schemas import (
@@ -17,6 +19,8 @@ from ai_org.security import (
     redact,
     sensitive_pattern_count,
 )
+
+_GENERIC_POSIX_ABSOLUTE_RE = re.compile(r"(?m)(?:^|[\s\"'])/(?!dev/null\b)[A-Za-z0-9_.-]+/")
 
 
 def project_to_response(project: Project) -> ProjectResponse:
@@ -149,6 +153,10 @@ def _api_safe_text(value: str) -> str:
     text = " ".join(str(redact(value)).split())
     if sensitive_pattern_count(text):
         return "[REDACTED]"
-    if WINDOWS_ABSOLUTE_PATH_RE.search(text) or POSIX_ABSOLUTE_PATH_RE.search(text):
+    if (
+        WINDOWS_ABSOLUTE_PATH_RE.search(text)
+        or POSIX_ABSOLUTE_PATH_RE.search(text)
+        or _GENERIC_POSIX_ABSOLUTE_RE.search(text)
+    ):
         return "<path>"
     return text

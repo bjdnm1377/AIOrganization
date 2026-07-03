@@ -86,8 +86,8 @@ def test_merge_candidate_api_redacts_malformed_internal_candidate_fields() -> No
         worker_run_id="run-malformed",
         source_type=MergeCandidateSourceType.MANUAL_FIXTURE,
         base_commit="abc123",
-        changed_files=["C:\\Users\\11566\\repo\\.envrc"],
-        diff_summary="C:\\Users\\11566\\repo\\patch.diff",
+        changed_files=["C:\\Users\\11566\\repo\\.envrc", "/opt/local/repo/file.txt"],
+        diff_summary="/opt/local/repo/patch.diff",
         patch_artifact_uri="artifact://C:\\Users\\11566\\repo\\TOKEN.patch",
         tests_summary="TOKEN",
         review_decision="ACCEPTED",
@@ -101,6 +101,7 @@ def test_merge_candidate_api_redacts_malformed_internal_candidate_fields() -> No
     assert response.status_code == 200
     body = str(response.json())
     assert "C:\\Users" not in body
+    assert "/opt/local" not in body
     assert "TOKEN" not in body
 
 
