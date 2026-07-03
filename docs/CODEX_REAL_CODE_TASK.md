@@ -112,7 +112,11 @@ code task.
   worktree stable but timed out during Codex CLI exec; the current recovery
   keeps the guard and uses the separate
   `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true` path to split one
-  logical multi-file task into two controlled single-file Codex steps.
+  logical multi-file task into two controlled single-file Codex steps. The
+  stepwise path also timed out in the first real step, so the current standalone
+  `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true` path diagnoses CLI/auth/transport
+  behavior in a temporary repository before another real Coding Worker task is
+  attempted.
 - Production arbitrary-code sandboxing.
 - User-provided shell command execution in Docker.
 - OpenHands, Virtuoso, HFSS, MATLAB, Redis, Temporal, or Web frontend

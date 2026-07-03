@@ -31,6 +31,11 @@
 - Codex step timeout classification as `CODEX_STEP_TIMEOUT`, failed step index
   recording, process-tree cleanup metadata, Review Worker rejection, and no
   accepted MergeCandidate artifact after timeout.
+- Codex CLI diagnostic opt-in, safe command construction, stdin versus
+  argument prompt shape, JSONL auth/path redaction, timeout classification,
+  process-tree cleanup metadata, main-worktree post-check reporting, Review
+  Worker timeout rejection, and no MergeCandidate/auto-merge/auto-push
+  diagnostic artifact state.
 - Local real Codex main worktree modification detection and Review Worker
   rejection.
 - Main-worktree fingerprint coverage for clean trees, tracked diffs, staged
@@ -146,6 +151,26 @@ Review Worker must accept, and the application records a pending
 MergeCandidate audit event. The test asserts no automatic merge or push and no
 main-branch modification.
 
+## Manual Real Codex CLI Diagnostics
+
+The CLI diagnostic test is not part of default pytest or CI execution. It is
+the current recovery path after the single-call and stepwise real multi-file
+tasks timed out. It requires a local Codex CLI session and explicit opt-in:
+
+```powershell
+$env:AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS = "true"
+.\.venv\Scripts\python -m pytest tests\manual\test_real_codex_cli_diagnostics.py -q
+```
+
+The test creates an independent temporary Git repository, runs `codex
+--version`, `codex doctor --json`, a read-only `codex exec` prompt, a stdin
+versus command-argument prompt comparison, and a single-file create diagnostic
+limited to `diagnostic/codex_diag.txt`. It writes a sanitized JSON diagnostic
+artifact under `.ai_org_artifacts/codex-cli-diagnostics/`, records the project
+main-worktree fingerprint before and after the run, and asserts no project
+source change. It does not run Docker, create a MergeCandidate, merge, push,
+commit, or enter MergeService work.
+
 ## PostgreSQL Integration
 
 Tests marked `postgres` run in two modes:
@@ -173,7 +198,8 @@ GitHub Actions, Docker unavailability fails the Docker sandbox integration step.
 
 `.github/workflows/verification.yml` uses Python 3.12, sets all real Codex
 opt-ins to `false` including
-`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK`, and runs:
+`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK` and
+`AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS`, and runs:
 
 ```bash
 python -m ruff format --check .
@@ -208,4 +234,5 @@ Tests do not call real LLMs, real Codex, OpenHands, paid services, or
 user-provided untrusted code. Codex Worker tests use only `MockCodexClient`,
 `DryRunCodexClient`, and NOT_CONFIGURED or fake-runner `LocalCodexCliClient`
 behavior unless the manual smoke, small code-task, single-call multi-file, or
-stepwise multi-file merge candidate tests are explicitly opted in locally.
+stepwise multi-file merge candidate tests, or the standalone CLI diagnostics,
+are explicitly opted in locally.

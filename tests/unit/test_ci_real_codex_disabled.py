@@ -10,6 +10,8 @@ def test_verification_workflow_keeps_real_codex_disabled() -> None:
     assert 'AI_ORG_ENABLE_REAL_CODEX_CODE_TASK: "false"' in workflow
     assert 'AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK: "false"' in workflow
     assert 'AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK: "false"' in workflow
+    assert 'AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS: "false"' in workflow
     assert "tests/manual/test_real_codex_multi_file_task.py" not in workflow
     assert "tests/manual/test_real_codex_stepwise_multi_file_task.py" not in workflow
+    assert "tests/manual/test_real_codex_cli_diagnostics.py" not in workflow
     assert "tests/manual/test_real_codex_code_task.py" not in workflow

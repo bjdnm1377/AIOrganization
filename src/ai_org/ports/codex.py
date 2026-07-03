@@ -28,7 +28,9 @@ class CommandLogEntry:
     jsonl_error_events: int = 0
     jsonl_file_change_events: int = 0
     last_jsonl_event_type: str = ""
+    last_jsonl_event_types: list[str] = field(default_factory=list)
     approval_requested: bool = False
+    timeout_classification: str = ""
     process_killed: bool | None = None
     process_tree_killed: bool | None = None
     cleanup_error: str = ""

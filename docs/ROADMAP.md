@@ -32,21 +32,29 @@
   a main-worktree modification. A later revalidation kept the main-worktree
   fingerprint stable but timed out during Codex CLI exec, so the current stage
   is timeout reduction and revalidation before any merge implementation.
+- Controlled real Codex stepwise multi-file orchestration implementation with
+  fixed single-file steps, independent allowed/forbidden files, per-step
+  timeout diagnostics, main-worktree fingerprint checks, task-worktree
+  dirty-file checks, fixed sandbox validation, independent review, and pending
+  MergeCandidate artifact generation only. Real manual validation still timed
+  out in the first step, so it is not accepted as a passing real Codex result.
 
 ## Current Stage
 
-- Controlled real Codex stepwise multi-file orchestration. One logical
-  multi-file task is split into fixed single-file Codex steps with independent
-  allowed files, forbidden files, timeout diagnostics, main-worktree
-  fingerprint checks, task-worktree dirty-file checks, fixed sandbox validation,
-  independent review, and pending MergeCandidate artifact generation only.
-  This stage must pass local real stepwise validation and CI before any
-  human-approved merge implementation begins.
+- Real Codex CLI single-file diagnostics. The system now diagnoses whether the
+  local Codex CLI can complete version, doctor, read-only exec, stdin versus
+  argument prompt shape, and one minimal single-file create scenario in an
+  independent temporary Git repository. The diagnostics preserve finite
+  timeouts, JSONL/process-cleanup evidence, main-worktree fingerprint
+  post-checks, no MergeCandidate, no merge, and no push. This stage must pass
+  locally and CI must keep real Codex disabled before any further real Coding
+  Worker task is attempted.
 
 ## Next Stage
 
-Only after the controlled stepwise multi-file timeout and isolation
-revalidation passes, the next stage may be human-approved merge implementation:
+Only after the CLI diagnostics and a later controlled real Coding Worker task
+pass without timeout or isolation violations, the next stage may be
+human-approved merge implementation:
 
 - Keep Codex behind Worker and CodexClient ports.
 - Preserve task-scoped Git worktrees and Review Worker gating.

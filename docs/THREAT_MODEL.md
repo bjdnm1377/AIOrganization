@@ -40,6 +40,9 @@
   `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true` opt-in.
 - Local real Codex CLI stepwise multi-file execution requires separate explicit
   `AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true` opt-in.
+- Local real Codex CLI diagnostics require separate explicit
+  `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true` opt-in and use an independent
+  temporary Git repository rather than the project worktree.
 - Local real Codex CLI smoke execution uses `workspace-write` sandbox,
   `on-request` approval, and `--cd <worktree>`.
 - Coding policy detects forbidden file changes, disallowed commands, suspicious
@@ -79,6 +82,9 @@
 - Stepwise per-step timeouts are classified as `CODEX_STEP_TIMEOUT`, record the
   failed step index and JSONL/process-cleanup diagnostics, stop later steps, and
   prevent an accepted MergeCandidate.
+- Diagnostic timeouts are classified as `CODEX_CLI_DIAGNOSTIC_TIMEOUT`, record
+  JSONL/process-cleanup diagnostics and main-worktree fingerprint post-check
+  evidence, and cannot create a MergeCandidate, merge, push, or pass review.
 - `SandboxRunner` isolates future command execution behind a port.
 - `DockerSandboxRunner` defaults to non-root, disabled network, `cap-drop=ALL`,
   `no-new-privileges`, read-only root filesystem, explicit tmpfs, task worktree
@@ -101,6 +107,10 @@
 - The stepwise multi-file recovery path reduces task size but does not remove
   the risk of local Codex CLI timeout or transport failure. A step timeout is
   blocked and must not be rewritten as a successful MergeCandidate.
+- The current diagnostic recovery path isolates minimal Codex CLI behavior
+  before another Coding Worker task is attempted. A diagnostic timeout is
+  blocked and must not be rewritten as a successful single-file or multi-file
+  task.
 - MergeCandidate output can be misleading if reviewed out of context; later
   MergeService work must re-check policy, tests, and human approval before any
   branch operation.

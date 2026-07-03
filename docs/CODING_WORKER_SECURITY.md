@@ -12,7 +12,10 @@ code-task path is a separate manual test and requires
 task path is manual-only and requires
 `AI_ORG_ENABLE_REAL_CODEX_MULTI_FILE_TASK=true`. The controlled real Codex
 stepwise multi-file path is also manual-only and requires
-`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true`.
+`AI_ORG_ENABLE_REAL_CODEX_STEPWISE_MULTI_FILE_TASK=true`. The current CLI
+diagnostic path is manual-only and requires
+`AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true`; it uses an independent temporary
+Git repository and never enters MergeCandidate or MergeService behavior.
 
 ## Policy Checks
 
@@ -101,6 +104,13 @@ is normalized to `CODEX_STEP_TIMEOUT`, records the failed step index, stops all
 later steps, keeps the main-worktree fingerprint post-check, and is rejected by
 the Review Worker.
 
+Codex CLI diagnostics classify timeouts without accepting work. The diagnostic
+runner records no-output, total-timeout, thread/turn/item stall, approval-wait,
+transport-stall, and process-exit-without-completion signals from bounded JSONL
+summaries. A diagnostic timeout is reported as
+`CODEX_CLI_DIAGNOSTIC_TIMEOUT`, does not generate a MergeCandidate, does not run
+merge or push code, and is rejected by the Review Worker as `codex:timeout`.
+
 ## Docker Sandbox Foundation
 
 The sandbox layer is implemented behind a `SandboxRunner` port. Default tests can
@@ -151,6 +161,9 @@ merge, auto-merge, auto-push, missing human approval, or any state other than
 - Real Codex stepwise multi-file execution also uses the local user's Codex CLI
   session when manually enabled. It reduces one logical multi-file task into
   multiple single-file steps, but still relies on the local Codex CLI runtime.
+- Real Codex CLI diagnostics also use the local user's Codex CLI session when
+  manually enabled. They isolate CLI/app-server/auth/transport failure modes
+  before any new Coding Worker task is attempted.
 - A previous real Codex multi-file validation changed the main worktree outside
   the task worktree. That result is not accepted; the main-worktree fingerprint
   guard is a fail-closed control and must be revalidated before any merge stage.

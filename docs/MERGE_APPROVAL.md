@@ -28,6 +28,12 @@ and process cleanup evidence. A failed step prevents an accepted
 MergeCandidate. This is still merge-candidate generation only, not merge
 approval execution.
 
+The latest real stepwise validation also timed out during the first single-file
+step. The current work therefore moves one level lower: a standalone Codex CLI
+diagnostic path checks version, doctor, read-only exec, prompt delivery shape,
+and a minimal single-file create in a temporary repository. That diagnostic path
+does not create a MergeCandidate and cannot authorize merge implementation.
+
 ## MergeCandidate Summary
 
 `build_merge_candidate_summary()` shapes structured data for a candidate:

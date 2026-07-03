@@ -769,6 +769,13 @@ def _metadata_bool(metadata: Mapping[str, object], key: str) -> bool:
     return value if isinstance(value, bool) else False
 
 
+def _metadata_string_list(metadata: Mapping[str, object], key: str) -> list[str]:
+    value = metadata.get(key)
+    if not isinstance(value, list):
+        return []
+    return [item for item in value if isinstance(item, str)]
+
+
 def _logical_cwd(request: CodexTaskRequest) -> str:
     return f"worktree://codex/{request.task.task_id}/attempt-{request.attempt_number}"
 
@@ -805,6 +812,7 @@ def _completed_log(
         jsonl_error_events=_metadata_int(jsonl_observability, "jsonl_error_events"),
         jsonl_file_change_events=_metadata_int(jsonl_observability, "jsonl_file_change_events"),
         last_jsonl_event_type=_metadata_str(jsonl_observability, "last_jsonl_event_type"),
+        last_jsonl_event_types=_metadata_string_list(jsonl_observability, "last_jsonl_event_types"),
         approval_requested=_metadata_bool(jsonl_observability, "approval_requested"),
     )
 
@@ -872,7 +880,9 @@ def _timeout_log(
         jsonl_error_events=_metadata_int(jsonl_observability, "jsonl_error_events"),
         jsonl_file_change_events=_metadata_int(jsonl_observability, "jsonl_file_change_events"),
         last_jsonl_event_type=_metadata_str(jsonl_observability, "last_jsonl_event_type"),
+        last_jsonl_event_types=_metadata_string_list(jsonl_observability, "last_jsonl_event_types"),
         approval_requested=_metadata_bool(jsonl_observability, "approval_requested"),
+        timeout_classification=_metadata_str(jsonl_observability, "timeout_classification"),
         process_killed=_timeout_bool(exc, "process_killed"),
         process_tree_killed=_timeout_bool(exc, "process_tree_killed"),
         cleanup_error=_summarize(_timeout_cleanup_error(exc)),
@@ -1024,6 +1034,7 @@ def _jsonl_observability(stdout: str) -> dict[str, object]:
     error_events = 0
     file_change_events = 0
     last_event_type = ""
+    last_event_types: list[str] = []
     approval_requested = False
     for line in stdout.splitlines():
         try:
@@ -1035,6 +1046,8 @@ def _jsonl_observability(stdout: str) -> dict[str, object]:
         event_count += 1
         event_type = _event_type(event)
         last_event_type = event_type or last_event_type
+        if event_type:
+            last_event_types.append(event_type)
         if event_type == "error":
             error_events += 1
         item = event.get("item")
@@ -1047,7 +1060,15 @@ def _jsonl_observability(stdout: str) -> dict[str, object]:
         "jsonl_error_events": error_events,
         "jsonl_file_change_events": file_change_events,
         "last_jsonl_event_type": last_event_type,
+        "last_jsonl_event_types": last_event_types[-5:],
         "approval_requested": approval_requested,
+        "timeout_classification": _classify_jsonl_timeout(
+            event_count=event_count,
+            error_events=error_events,
+            last_event_type=last_event_type,
+            last_event_types=last_event_types,
+            approval_requested=approval_requested,
+        ),
     }
 
 
@@ -1062,10 +1083,37 @@ def _summarize_codex_jsonl(stdout: str) -> str:
         f"error_events={observability['jsonl_error_events']}; "
         f"file_change_events={observability['jsonl_file_change_events']}; "
         f"last_event={observability['last_jsonl_event_type']}; "
+        f"last_events={','.join(_metadata_string_list(observability, 'last_jsonl_event_types'))}; "
         f"approval_requested={str(observability['approval_requested']).lower()}; "
+        f"timeout_classification={observability['timeout_classification']}; "
         f"thread_observed={str(metadata['codex_thread_observed']).lower()}; "
         f"session_observed={str(metadata['codex_session_observed']).lower()}"
     )
+
+
+def _classify_jsonl_timeout(
+    *,
+    event_count: int,
+    error_events: int,
+    last_event_type: str,
+    last_event_types: list[str],
+    approval_requested: bool,
+) -> str:
+    if event_count == 0:
+        return "no_output_timeout"
+    if approval_requested:
+        return "approval_wait"
+    if last_event_type == "item.started":
+        return "stuck_after_item_started"
+    if last_event_type == "turn.started":
+        return "stuck_after_turn_started"
+    if last_event_type in {"thread.started", "conversation.started"}:
+        return "stuck_after_thread_started"
+    if error_events:
+        return "transport_stall"
+    if any(event_type == "thread.started" for event_type in last_event_types):
+        return "transport_stall"
+    return "total_timeout"
 
 
 def _event_type(event: Mapping[str, Any]) -> str:

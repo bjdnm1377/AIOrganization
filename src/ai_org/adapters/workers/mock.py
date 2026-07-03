@@ -167,6 +167,7 @@ def _review_coding_result(
     not_configured = result.status == AgentResultStatus.NOT_CONFIGURED
     runtime_blocked = result.metadata.get("blocked_reason") in {
         "CODEX_CLI_TIMEOUT",
+        "CODEX_CLI_DIAGNOSTIC_TIMEOUT",
         "CODEX_STEP_TIMEOUT",
     }
     if policy_violations or not_configured or runtime_blocked:

@@ -26,6 +26,10 @@ Safety controls:
   worktree. It splits one logical multi-file task into multiple single-file
   Codex CLI invocations and re-checks the main-worktree fingerprint after each
   step.
+- The manual real Codex CLI diagnostic path runs in an independent temporary
+  Git repository rather than the project worktree. It records the project
+  main-worktree fingerprint before and after diagnostics and does not create a
+  MergeCandidate, commit, merge, or push.
 - No automatic merge is performed.
 - No automatic push is performed.
 - Local real Codex Worker execution compares a main-worktree fingerprint before
@@ -113,6 +117,25 @@ MergeCandidate.
 The stepwise path does not merge, commit, push, open PRs, delete worktrees, or
 modify the main branch. It produces only a pending MergeCandidate artifact after
 all steps and the fixed sandbox validation pass.
+
+## Real Codex CLI Diagnostic Scope
+
+For `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true`, the manual diagnostic test
+creates a separate temporary Git repository and uses it as the Codex cwd and
+`--cd <worktree>` target. The project repository is observed only through its
+main-worktree fingerprint and `git status --short` post-check.
+
+The diagnostic scenarios are deliberately minimal:
+
+- `codex --version`;
+- `codex doctor --json` summarized without raw auth details;
+- read-only exec prompt asking for exactly `OK`;
+- stdin versus argument prompt-shape comparison;
+- single-file create limited to `diagnostic/codex_diag.txt`.
+
+Timeout or auth failure is a blocked diagnostic result. It is not a
+MergeCandidate failure, not a merge approval signal, and not evidence that a
+Coding Worker task succeeded.
 
 ## Cleanup
 

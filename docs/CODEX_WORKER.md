@@ -161,6 +161,29 @@ MergeCandidate artifact be written. The artifact remains a human-review surface:
 it records no merge, no auto-merge, no auto-push, and required human merge
 approval. It is not a MergeService and it does not perform branch operations.
 
+## Local Real Codex CLI Diagnostics Path
+
+The current manual recovery stage no longer asks real Codex to complete a
+multi-file task. Instead, `tests/manual/test_real_codex_cli_diagnostics.py`
+uses `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=true` to run minimal CLI diagnostics
+in an independent temporary Git repository.
+
+The diagnostic path records:
+
+- `codex --version`;
+- `codex doctor --json` summarized without raw auth details;
+- a read-only `codex exec --json --cd <worktree>` prompt that should reply
+  exactly `OK`;
+- stdin versus command-argument prompt shape comparison;
+- a single-file create prompt limited to `diagnostic/codex_diag.txt`.
+
+The diagnostics do not use the project source tree as Codex cwd, do not create
+MergeCandidate artifacts, do not run Docker validation, do not commit, merge,
+push, or enter MergeService work. The main-worktree fingerprint is recorded
+before and after the diagnostics, and timeout results record JSONL event counts,
+last event types, timeout classification, and process-tree cleanup metadata.
+Default pytest and CI keep this path disabled.
+
 ## AgentResult Metadata
 
 Codex Worker metadata includes:
