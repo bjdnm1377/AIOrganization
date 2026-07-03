@@ -58,6 +58,27 @@ def test_diagnostic_exec_invocation_sanitizes_safe_command(tmp_path: Path) -> No
     assert "<prompt>" in arg_invocation.safe_command
 
 
+def test_diagnostic_exec_invocation_rejects_unsafe_cli_policy(tmp_path: Path) -> None:
+    with pytest.raises(ValueError, match="sandbox"):
+        build_exec_invocation(
+            command="codex",
+            worktree_path=tmp_path,
+            prompt="Reply with exactly OK.",
+            prompt_mode="stdin",
+            sandbox="danger-full-access",
+            approval_policy="on-request",
+        )
+    with pytest.raises(ValueError, match="approval"):
+        build_exec_invocation(
+            command="codex",
+            worktree_path=tmp_path,
+            prompt="Reply with exactly OK.",
+            prompt_mode="stdin",
+            sandbox="read-only",
+            approval_policy="never",
+        )
+
+
 def test_diagnostic_jsonl_summary_omits_raw_auth_details(tmp_path: Path) -> None:
     home_auth = str(Path.home() / ".codex" / "auth.json")
     runner = CodexCliDiagnosticsRunner(

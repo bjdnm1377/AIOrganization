@@ -27,6 +27,8 @@ from ai_org.security import redact
 CODEX_DIAGNOSTICS_ENV_VAR = "AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS"
 PromptMode = Literal["stdin", "argument"]
 CodexCommandRunner = Callable[[list[str], Path, str | None, int], subprocess.CompletedProcess[str]]
+_ALLOWED_DIAGNOSTIC_SANDBOXES = frozenset({"read-only", "workspace-write"})
+_ALLOWED_DIAGNOSTIC_APPROVAL_POLICIES = frozenset({"on-request", "untrusted"})
 
 
 @dataclass(frozen=True, slots=True)
@@ -229,6 +231,10 @@ def build_exec_invocation(
     sandbox: str,
     approval_policy: str,
 ) -> CodexExecInvocation:
+    if sandbox not in _ALLOWED_DIAGNOSTIC_SANDBOXES:
+        raise ValueError("Unsupported diagnostic Codex sandbox")
+    if approval_policy not in _ALLOWED_DIAGNOSTIC_APPROVAL_POLICIES:
+        raise ValueError("Unsupported diagnostic Codex approval policy")
     base = [
         command,
         "--sandbox",

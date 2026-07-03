@@ -214,6 +214,7 @@ python -m pytest \
   tests/unit/test_worktree_service.py \
   tests/unit/test_codex_diff.py \
   tests/unit/test_codex_merge_candidate.py \
+  tests/unit/test_codex_cli_diagnostics.py \
   tests/unit/test_codex_worker.py \
   tests/unit/test_ci_real_codex_disabled.py \
   tests/unit/test_merge_candidate_audit.py \

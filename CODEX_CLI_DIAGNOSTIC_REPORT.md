@@ -132,22 +132,35 @@ Previous pushed baseline:
 - Commit: `fbba2bfceee6acb21483ecb0eff0af34b5b0cf51`.
 - Result: success.
 
-Current diagnostic report commit:
+Current diagnostic implementation/report commit:
 
-- CI run id: pending.
-- CI run URL: pending.
-- CI commit hash: pending.
+- Workflow: `Verification`.
+- Run id: `28657283130`.
+- Run URL: `https://github.com/bjdnm1377/AIOrganization/actions/runs/28657283130`.
+- Commit: `8171d70e38c0253fea704c9a30871cc9ff3ec6a5`.
+- Job: `Python 3.12 PostgreSQL verification`, job id `84989340652`.
+- Result: success.
 - CI must keep `AI_ORG_ENABLE_REAL_CODEX_DIAGNOSTICS=false` and must not call
   real Codex.
 
 ## Reviewer Status
 
-Independent reviewer: pending after local post-report checks and CI.
+Independent reviewer `Ptolemy` completed a read-only review after CI.
 
-Reviewer must verify that this stage did not implement MergeService, did not
-merge, did not push Codex output branches, did not call real Codex in CI, did
-not use `danger-full-access`, did not leak credentials, and did not rewrite the
-D3 timeout as success.
+- High severity findings: none.
+- Medium severity findings: none.
+- Confirmed no MergeService, merge, auto-merge, PR creation, Codex output
+  branch push path, CI real Codex call, `danger-full-access` use, credential
+  leak, or D3 timeout misreporting.
+- Confirmed Review Worker rejection for `CODEX_CLI_DIAGNOSTIC_TIMEOUT`.
+- Low risk noted: CI evidence was pending in the first report commit; this
+  section now records run `28657283130`.
+- Low risk noted: diagnostic command construction did not validate sandbox and
+  approval strings internally; it now rejects unsupported sandbox and approval
+  policy values before building a command.
+- Low risk noted: diagnostic unit tests were only in full pytest; CI now also
+  includes `tests/unit/test_codex_cli_diagnostics.py` in the explicit Codex
+  Coding Worker isolation step.
 
 ## Known Risks
 
